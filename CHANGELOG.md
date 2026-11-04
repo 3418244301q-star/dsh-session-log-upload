@@ -728,7 +728,7 @@ npm 包名全局唯一，只能换名；顺带也避开了「GitHub 上两个同
 | `index.js` 的插件 `name` 导出、日志前缀 | `dsh-session-log-upload` |
 | 手动上传端点 | `POST /__dsh-session-log-upload/upload` |
 
-`repository` 仍指向 GitHub 仓库 `3418244301q-star/dsh-session-sync`（仓库没改名）。
+GitHub 仓库同步改名为 `dsh-session-log-upload`（旧地址由 GitHub 自动重定向），`repository` 字段跟着指向新地址。
 
 ### 版本语义
 
