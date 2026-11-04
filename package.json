@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-sync",
-  "version": "0.5.8",
+  "version": "0.5.9",
   "private": true,
   "type": "module",
   "description": "Sync the canonical DSH session log for sessions driven by non-official model channels (ollama-local, pi-ai, OpenAI-compatible) to DeepSeek, sharing the built-in watermark.",
