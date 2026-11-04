@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "title": "跨渠道会话日志",
+    "description": "把非官方模型渠道（ollama-local、pi-ai、OpenAI 兼容）会话的规范日志也送到 DeepSeek，并与内置插件共用同一套水位，不重复上传。"
+  },
+  "mode.label": "上传模式",
+  "mode.manual": "仅手动",
+  "mode.deferred": "收尾与空闲",
+  "mode.realtime": "每轮实时"
+}

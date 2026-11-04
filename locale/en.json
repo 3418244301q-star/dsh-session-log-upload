@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "title": "Cross-channel session log",
+    "description": "Uploads the canonical DSH session log for sessions driven by non-official model channels (ollama-local, pi-ai, OpenAI-compatible), sharing the built-in watermark so nothing is sent twice."
+  },
+  "mode.label": "Upload mode",
+  "mode.manual": "Manual only",
+  "mode.deferred": "On idle",
+  "mode.realtime": "Every turn"
+}

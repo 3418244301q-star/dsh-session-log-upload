@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Cross-channel session log">
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#12202f"/>
+  <g stroke="#5fb0ff" stroke-width="3" stroke-linecap="round" fill="none">
+    <path d="M16 46V30a16 16 0 0 1 32 0v16"/>
+    <path d="M16 46h8"/>
+    <path d="M40 46h8"/>
+  </g>
+  <g stroke="#8fd6b4" stroke-width="3" stroke-linecap="round">
+    <path d="M26 34h12"/>
+    <path d="M26 41h12"/>
+  </g>
+  <path d="M32 14v10m0-10-6 6m6-6 6 6" stroke="#ffd166" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
