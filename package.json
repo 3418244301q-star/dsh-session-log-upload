@@ -20,7 +20,8 @@
     "icon.svg",
     "README.md",
     "CHANGELOG.md",
-    "tools/"
+    "tools/",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {
@@ -52,5 +53,6 @@
     "session-log",
     "telemetry",
     "ollama"
-  ]
+  ],
+  "license": "MIT"
 }

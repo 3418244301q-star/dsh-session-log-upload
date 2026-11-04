@@ -89,3 +89,7 @@ node tools/check-client.mjs       # 设置页控件：假 __ModuleLoader__
 
 作为 Host 插件安装到某个 profile（需要 `dsh` 的插件管理能力或 `plugin_manager`），
 bundle 清单在 `cordis.patch.yml`，默认 `enabled: false`。
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
