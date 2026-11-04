@@ -1,4 +1,4 @@
-# dsh-session-sync
+# dsh-session-log-upload
 
 内置插件 `@deepseek-ai/dsh-session-log-deepseek` 只搭官方适配器的便车：`dsh_session_log`
 作为顶层字段挂在官方 chat 请求上。第三方渠道（ollama-local / pi-ai / OpenAI 兼容）不走那条
@@ -147,7 +147,7 @@ node tools/check-client.mjs       # 设置页控件：假 __ModuleLoader__
   已在规格里加注记）。
 - `turn/end` 的 `forked` 收尾不触发上传：那是 fork 子会话加载继承段时的合成收尾；
   极端情况下若它正好是最后一条，要等启动扫描或手动点击。
-- 「立即上传」端点 `POST /__dsh-session-sync/upload` 是宿主本地 HTTP 路由，
+- 「立即上传」端点 `POST /__dsh-session-log-upload/upload` 是宿主本地 HTTP 路由，
   只校验同源；同机其它页面猜到路径最多能重复触发一次上传（水位与冷却挡住实际重发）。
 
 ## 安装

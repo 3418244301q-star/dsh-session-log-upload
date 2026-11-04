@@ -261,7 +261,7 @@ const post = (route) => {
   {
     const { session } = makeSession({ id: 'session-manual-upload' });
     const { routes, requests } = await boot({ ...base, mode: 'manual' }, [{ session }]);
-    const route = routes.find((r) => r.path === '/__dsh-session-sync/upload');
+    const route = routes.find((r) => r.path === '/__dsh-session-log-upload/upload');
     check('registers the manual upload route', Boolean(route), routes.map((r) => r.path).join(','));
     const first = await post(route);
     check('manual upload reports uploaded', first.json.code === 'uploaded' && first.json.sessions === 1, JSON.stringify(first.json));

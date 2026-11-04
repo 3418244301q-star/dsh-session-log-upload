@@ -70,7 +70,7 @@ globalThis.document = undefined; // 短路样式注入
 
 new Function('window', SOURCE)(globalThis.window);
 
-check('module loader id equals package name', spec?.id === 'dsh-session-sync', spec?.id);
+check('module loader id equals package name', spec?.id === 'dsh-session-log-upload', spec?.id);
 const mod = spec.factory((name) => {
   if (name === 'react') return React;
   throw new Error(`unexpected require: ${name}`);
@@ -117,9 +117,9 @@ const ctx = {
 
 mod.apply(ctx);
 
-check('waits for the Host config to be served', servedFor?.[0] === 'dsh-session-sync', JSON.stringify(servedFor));
+check('waits for the Host config to be served', servedFor?.[0] === 'dsh-session-log-upload', JSON.stringify(servedFor));
 check('registers into settings.general.item', injectedInto.includes('settings.general.item'), JSON.stringify(injectedInto));
-check('row id is the package namespace', registered?.options.id === 'dsh-session-sync', registered?.options.id);
+check('row id is the package namespace', registered?.options.id === 'dsh-session-log-upload', registered?.options.id);
 check('row sits right below the official row (order 91)', registered?.options.order === 91, String(registered?.options.order));
 
 const face = registered.options.inject();
@@ -233,7 +233,7 @@ globalThis.fetch = async (url, init) => {
   return { json: async () => ({ ok: true, code: 'uploaded', sessions: 2, bytes: 20480 }) };
 };
 await manualBtn.props.onClick();
-check('clicking posts to the host endpoint', calls.length === 1 && calls[0].url === '/__dsh-session-sync/upload' && calls[0].method === 'POST', JSON.stringify(calls));
+check('clicking posts to the host endpoint', calls.length === 1 && calls[0].url === '/__dsh-session-log-upload/upload' && calls[0].method === 'POST', JSON.stringify(calls));
 
 const noticeTree = render({ enabled: true, mode: 'manual' }, { notice: { tone: 'success', text: 'noticeUploaded' } });
 const noticeNode = findBy(noticeTree, (n) => n.props?.className === 'sla-notice')[0];

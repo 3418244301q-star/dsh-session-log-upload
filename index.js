@@ -1,5 +1,5 @@
 /**
- * dsh-session-sync — 跨渠道会话日志上传（Host 插件）。
+ * dsh-session-log-upload — 跨渠道会话日志上传（Host 插件）。
  *
  * 内置插件 @deepseek-ai/dsh-session-log-deepseek 只搭官方适配器的便车：它把
  * `dsh_session_log` 挂到 chat 请求上。第三方渠道（ollama-local / pi-ai / OpenAI
@@ -19,7 +19,7 @@
 
 import z from '@deepseek-ai/schemastery';
 
-export const name = 'dsh-session-sync';
+export const name = 'dsh-session-log-upload';
 
 /**
  * 配置 schema。`enabled` 与 `mode` 是 volatile：设置页改完立即生效，不用重启。
@@ -446,7 +446,7 @@ export function apply(ctx, config) {
   const logger = ctx.logger;
   const log = (level, message) => {
     try {
-      logger?.[level]?.(`dsh-session-sync: ${message}`);
+      logger?.[level]?.(`dsh-session-log-upload: ${message}`);
     } catch {
       /* 日志失败也不能影响会话 */
     }
@@ -897,7 +897,7 @@ export function apply(ctx, config) {
   if (webServer?.register) {
     const unregister = webServer.register({
       kind: 'exact',
-      path: '/__dsh-session-sync/upload',
+      path: '/__dsh-session-log-upload/upload',
       handler: async (req, res) => {
         const send = (status, payload) => {
           try {

@@ -2,8 +2,8 @@
 # Defaults mirror SPEC-跨渠道会话日志上传.md §4.2. `enabled: false` means the
 # plugin loads but never sends anything until the user turns it on.
 - insert:
-    - id: dsh-session-sync
-      name: dsh-session-sync
+    - id: dsh-session-log-upload
+      name: dsh-session-log-upload
       config:
         enabled: false
         mode: deferred

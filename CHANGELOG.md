@@ -1,11 +1,12 @@
 # 产出档案 / 更新日志
 
 **插件**：`dsh-session-sync`（跨渠道会话日志上传）
-**包名变更**：0.4.0 之后改名为 `dsh-session-sync`（此前为 `dsh-session-log-anywhere`），
+**包名变更**：1.0.0 起改名为 `dsh-session-log-upload`（GitHub 仓库仍为 `dsh-session-sync`）。
+历史上曾用名：`dsh-session-log-anywhere`（0.1.0–0.4.0）、`dsh-session-sync`（0.5.x）。
 下方早期条目中的旧名与本地路径属于当时的记录，未回改。
 **规格来源**：`D:\dsh\3\SPEC-跨渠道会话日志上传.md`
 **首次实现**：2026-11-04
-**当前版本**：0.5.9
+**当前版本**：1.0.0
 
 ---
 
@@ -39,6 +40,7 @@
 | 0.5.7 | 11-04 21:50 | 排版：中文提示句连接处多了一个 ASCII 空格 |
 | 0.5.8 | 11-04 22:30 | 文档：README 补「版本要求」与预发布 semver 盲区 |
 | 0.5.9 | 11-04 22:45 | 文档：与同类插件的差异化声明 + 失效场景清单 |
+| **1.0.0** | 11-04 22:30 | 正式版：改名 `dsh-session-log-upload`，准备发布 npm |
 
 ---
 
@@ -701,6 +703,42 @@ PASS  check-envelope.mjs  {"sessions":52,"mismatches":0}
 不需要鉴权。也就是说确实存在一条比"借道 chat 请求"更直接的官方通道。**本版不切换**——
 OTLP 那边没有水位概念，内置插件仍会照发它那一份，切过去必然从"零重复"变成"必然重复"，
 与本插件的设计目标相反。
+
+---
+
+## 1.0.0 — 正式版
+
+第一个稳定版。功能集与 0.5.9 相同，改动是发布准备：
+
+### 改名
+
+包名从 `dsh-session-sync` 改为 **`dsh-session-log-upload`**。
+
+原因是 npm 上的 `dsh-session-sync` 已被占用——是 `PerryLink` 的「跨设备会话 git 同步」插件
+（0.2.31，功能完全不同：它把会话库做成 git 镜像做多机同步，本插件是把会话日志送到 DeepSeek）。
+npm 包名全局唯一，只能换名；顺带也避开了「GitHub 上两个同名仓库、功能却不同」的混淆。
+
+随之同步改动的标识（必须一致，否则加载失败）：
+
+| 位置 | 新值 |
+|---|---|
+| `package.json` 的 `name` | `dsh-session-log-upload` |
+| `cordis.patch.yml` 的 `id` / `name` | `dsh-session-log-upload` |
+| `client.js` 的 module loader id、locale 命名空间、样式标签 | `dsh-session-log-upload` |
+| `index.js` 的插件 `name` 导出、日志前缀 | `dsh-session-log-upload` |
+| 手动上传端点 | `POST /__dsh-session-log-upload/upload` |
+
+`repository` 仍指向 GitHub 仓库 `3418244301q-star/dsh-session-sync`（仓库没改名）。
+
+### 版本语义
+
+1.0.0 表示接口与行为定型：配置键、结果码、水位写法、插槽位置都不再随小版本变。
+后续遵循 semver——行为修正走 patch，新能力走 minor，破坏兼容才动 major。
+
+### 验证
+
+四套全绿（parity 208/208、runtime 49/49、client 35/35、envelope 52 会话 0 差异），
+改名后复跑确认没有把标识改漏。
 
 ---
 

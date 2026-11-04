@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: 'dsh-session-sync',
+  id: 'dsh-session-log-upload',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
@@ -44,10 +44,10 @@ window.__ModuleLoader__.load({
       '.sla-switch[aria-checked="true"]{background:var(--dsw-alias-brand-primary)}',
       '.sla-switch[aria-checked="true"]::after{transform:translateX(16px)}',
     ].join('');
-    const tagId = 'dsh-session-sync/SettingsRow.module.css';
+    const tagId = 'dsh-session-log-upload/SettingsRow.module.css';
     if (typeof document !== 'undefined' && document.querySelector(`style[data-plugin-css="${tagId}"]`) === null) {
       const tag = document.createElement('style');
-      tag.dataset.plugin = 'dsh-session-sync';
+      tag.dataset.plugin = 'dsh-session-log-upload';
       tag.dataset.pluginCss = tagId;
       tag.textContent = css;
       document.head.appendChild(tag);
@@ -274,7 +274,7 @@ window.__ModuleLoader__.load({
         const controller = typeof AbortController === 'function' ? new AbortController() : null;
         const timer = controller ? setTimeout(() => controller.abort(), 120000) : null;
         try {
-          const response = await fetch('/__dsh-session-sync/upload', {
+          const response = await fetch('/__dsh-session-log-upload/upload', {
             method: 'POST',
             headers: { 'content-type': 'application/json', 'x-dsh-sync': '1' },
             body: '{}',
@@ -343,7 +343,7 @@ window.__ModuleLoader__.load({
 
     function apply(ctx) {
       const locale = 'settings.sessionLogAnywhere';
-      const namespace = 'dsh-session-sync';
+      const namespace = 'dsh-session-log-upload';
       ctx.effect(() => ctx.locale.register(locale, { en, zh }));
 
       const form = ctx.configForms.get(namespace);
