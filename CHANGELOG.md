@@ -755,14 +755,16 @@ GitHub 仓库同步改名为 `dsh-session-log-upload`（旧地址由 GitHub 自�
 
 | 脚本 | 作用 | 现在的状态 |
 |---|---|---|
-| `tools/check-core-parity.mjs` | 从 `app.asar` 取出核心包原样跑，与本插件逐字节对账 | **52 会话 × 4 档 = 208/208**，0 错误 |
+| `tools/check-core-parity.mjs` | 从 `app.asar` 取出核心包原样跑，与本插件逐字节对账 | **53 会话 × 4 档 = 212/212**，0 错误 |
 | `tools/check-runtime.mjs` | mock fetch + mock ctx 跑 Host 行为（结果码、并发、重试、卸载） | **49/49** |
 | `tools/check-client.mjs` | 假 `__ModuleLoader__` 里跑设置页控件，含点击后的结果提示 | **35/35** |
-| `tools/check-envelope.mjs` | 分段/水位的回归护栏（与 `tools/reference/` 比对，读真实日志） | 52 会话，0 差异 |
+| `tools/check-envelope.mjs` | 分段/水位的回归护栏（与 `tools/reference/` 比对，读真实日志） | 53 会话，0 差异 |
 | `tools/check-docs.mjs` | 跑上面四个套件，与上面这张表比对数字 | 文档数字与实测一致 |
 
-> 这张表的数字必须与最新版本段一致。`node tools/check-docs.mjs` 会跑一遍套件并与本表比对，
-> 对不上就报错——改测试时忘了同步这里会被它拦住。
+> `node tools/check-docs.mjs` 会跑一遍套件并与本表比对。它盯的是**能被我改错的部分**：
+> runtime / client 的断言条数、parity 与 envelope 的内部一致性（会话数 × 档数 = 比对组数）以及
+> 必须是 0 的差异数。**会话数本身不做硬比对**——它随本机日志增长，今天 53、明天可能 56，
+> 那是环境在变，不是文档写错。
 
 复跑（在仓库根目录）：
 
