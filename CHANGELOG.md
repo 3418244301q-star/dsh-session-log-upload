@@ -740,6 +740,15 @@ GitHub 仓库同步改名为 `dsh-session-log-upload`（旧地址由 GitHub 自�
 四套全绿（parity 208/208、runtime 49/49、client 35/35、envelope 52 会话 0 差异），
 改名后复跑确认没有把标识改漏。
 
+### 文档：README 顶部免责声明
+
+按「非官方插件」的定位补了一段声明，覆盖：与官方无隶属关系、上传内容范围、不做脱敏与合规审查、
+默认关闭、自动化请求可能被认定为非人工流量、依赖未公开的 API 行为因此不保证可用、MIT 按原样提供。
+
+修订了草稿里的两处事实错误：包名从 `dsh-session-upload` 更正为 `dsh-session-log-upload`；
+「上传至 DSH 官方 API 通道」改为「用你自己配置的 DeepSeek API 凭据向 `api.deepseek.com` 发送一次最小 chat 请求」，
+并补明只上传非官方渠道那一段（官方渠道归内置插件）。
+
 ---
 
 ## 验证工具一览
