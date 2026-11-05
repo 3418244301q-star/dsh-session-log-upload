@@ -46,6 +46,7 @@ const React = {
   useEffect() {
     hookIndex++;
   },
+  Fragment: Symbol.for('react.fragment'),
 };
 
 /** 从 client.js 里取出真实的 zh 文案表，t() 用它，断言才能校验正文与占位符替换。 */
@@ -71,10 +72,38 @@ globalThis.document = undefined; // 短路样式注入
 new Function('window', SOURCE)(globalThis.window);
 
 check('module loader id equals package name', spec?.id === 'dsh-session-log-upload', spec?.id);
-const mod = spec.factory((name) => {
-  if (name === 'react') return React;
-  throw new Error(`unexpected require: ${name}`);
-});
+
+/** 把节点树里的纯文本按顺序收出来（弹层把多行文案塞在一个节点里传进来）。 */
+function flatText(node, out = []) {
+  if (typeof node === 'string') out.push(node);
+  else if (Array.isArray(node)) node.forEach((child) => flatText(child, out));
+  else if (node && typeof node === 'object') flatText(node.children ?? [], out);
+  return out;
+}
+
+/** 官方风险确认弹层的替身：只记录 props，断言关心的是"弹了没有、确认有没有拦住"。 */
+const FakeRisk = (props) => React.createElement('div', {
+  className: 'fake-risk',
+  'data-open': String(props.open),
+  'data-acknowledged': String(props.acknowledged),
+  'data-title': props.title,
+  'data-lines': flatText(props.description).join('/'),
+  onAcknowledgedChange: props.onAcknowledgedChange,
+  onConfirm: props.onConfirm,
+  onCancel: props.onCancel,
+}, props.acknowledgeLabel ?? null, props.confirmLabel ?? null);
+
+/** 按不同的依赖条件装配一份模块：primitives 是否存在决定走弹窗还是行内面板。 */
+function loadModule({ withPrimitives }) {
+  new Function('window', SOURCE)(globalThis.window);
+  return spec.factory((name) => {
+    if (name === 'react') return React;
+    if (name === '@deepseek-ai/dsh-client-ui-primitives' && withPrimitives) return { RiskConfirmation: FakeRisk };
+    throw new Error(`unexpected require: ${name}`);
+  });
+}
+
+const mod = loadModule({ withPrimitives: true });
 check('factory returns apply/inject', typeof mod.apply === 'function' && Array.isArray(mod.inject), JSON.stringify(mod.inject));
 
 /* 假 Host 侧 */
@@ -132,7 +161,9 @@ function render(state, options = {}, slots) {
   hookSlots = slots ?? [
     options.busy === true,
     options.notice ?? null,
-    undefined, // SettingsRow 的 useEffect 槽位
+    options.confirming === true,   // SettingsRow：是否处于风险确认
+    options.riskAck === true,      // SettingsRow：确认框是否已勾选
+    undefined,                     // SettingsRow 的 useEffect 槽位
     options.open === true,
     options.openIndex ?? 0,
   ];
@@ -140,6 +171,7 @@ function render(state, options = {}, slots) {
     useConfig: (selector) => selector({ value: state, status: 'ready', writable: true }),
     setMode: face.setMode,
     setEnabled: face.setEnabled,
+    setAcknowledged: face.setAcknowledged,
     t: (key) => ZH[key] ?? key,
   };
   for (let pass = 0; pass < 8; pass += 1) {
@@ -239,6 +271,74 @@ const noticeTree = render({ enabled: true, mode: 'manual' }, { notice: { tone: '
 const noticeNode = findBy(noticeTree, (n) => n.props?.className === 'sla-notice')[0];
 check('renders the result notice', Boolean(noticeNode), collectText(noticeTree).join('|'));
 check('notice carries its tone', noticeNode?.props?.['data-tone'] === 'success');
+
+/* 风险确认：首次开启必须过一遍 */
+{
+  const before = writes.length;
+  const fresh = render({ enabled: false, mode: 'deferred' });
+  const switchNode = findBy(fresh, (n) => n.type === 'button' && n.props?.role === 'switch')[0];
+  switchNode.props.onClick();
+  const afterToggle = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+  const risk = findBy(afterToggle, (n) => n.props?.className === 'fake-risk')[0];
+  check('first enable opens the confirmation before turning on', Boolean(risk), collectText(afterToggle).join('|'));
+  check('confirmation is titled as an enable action', risk?.props?.['data-title'] === ZH.riskTitle, String(risk?.props?.['data-title']));
+  check('confirmation spells out all three risk lines', risk?.props?.['data-lines'] === [ZH.riskLine1, ZH.riskLine2, ZH.riskLine3].join('/'), String(risk?.props?.['data-lines']));
+  check('confirm stays disabled until acknowledged', risk?.props?.['data-acknowledged'] === 'false', String(risk?.props?.['data-acknowledged']));
+  check('nothing was written just by opening the confirmation', writes.length === before, JSON.stringify(writes.slice(before)));
+  check('switch is still off while the confirmation is open', findBy(afterToggle, (n) => n.type === 'button' && n.props?.role === 'switch')[0]?.props?.['aria-checked'] === false);
+
+  // 勾选 → 再点确认
+  risk.props.onAcknowledgedChange(true);
+  const acked = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+  const ackedRisk = findBy(acked, (n) => n.props?.className === 'fake-risk')[0];
+  check('the acknowledgement is reflected back into the dialog', ackedRisk?.props?.['data-acknowledged'] === 'true');
+  ackedRisk.props.onConfirm();
+  check('confirming records the acknowledgement', writes.some(([k, v]) => k === 'acknowledged' && v === true), JSON.stringify(writes.slice(before)));
+  check('confirming enables the plugin', writes.some(([k, v]) => k === 'enabled' && v === true), JSON.stringify(writes.slice(before)));
+
+  // 已经确认过：开关直通，不再弹
+  const againWrites = writes.length;
+  const known = render({ enabled: false, mode: 'deferred', acknowledged: true });
+  findBy(known, (n) => n.type === 'button' && n.props?.role === 'switch')[0].props.onClick();
+  check('a returning user is not asked twice', findBy(render({ enabled: false, mode: 'deferred', acknowledged: true }, {}, hookSlots), (n) => n.props?.className === 'fake-risk').length === 0);
+  check('a returning user enables straight away', writes.slice(againWrites).some(([k, v]) => k === 'enabled' && v === true), JSON.stringify(writes.slice(againWrites)));
+
+  // 关闭方向不做确认
+  const offWrites = writes.length;
+  const on = render({ enabled: true, mode: 'deferred', acknowledged: true });
+  findBy(on, (n) => n.type === 'button' && n.props?.role === 'switch')[0].props.onClick();
+  check('turning it off needs no confirmation', writes.slice(offWrites).every(([k]) => k !== 'acknowledged') && writes.slice(offWrites).some(([k, v]) => k === 'enabled' && v === false), JSON.stringify(writes.slice(offWrites)));
+}
+
+/* 老核心没有 RiskConfirmation：确认就地展开，判定不变 */
+{
+  const main = registered;
+  const legacy = loadModule({ withPrimitives: false });
+  legacy.apply(ctx);
+  const legacyFace = registered.options.inject();
+  const legacyState = { value: { enabled: false, mode: 'deferred' }, status: 'ready', writable: true };
+  const props = {
+    useConfig: (selector) => selector(legacyState),
+    setMode: legacyFace.setMode,
+    setEnabled: legacyFace.setEnabled,
+    setAcknowledged: legacyFace.setAcknowledged,
+    t: (key) => ZH[key] ?? key,
+  };
+  hookSlots = [false, null, false, false, undefined, false, 0];
+  hookIndex = 0;
+  let tree2 = expand(registered.component(props));
+  findBy(tree2, (n) => n.type === 'button' && n.props?.role === 'switch')[0].props.onClick();
+  hookIndex = 0;
+  tree2 = expand(registered.component(props));
+  const panel = findBy(tree2, (n) => n.props?.className === 'sla-risk')[0];
+  check('legacy core falls back to an inline confirmation', Boolean(panel), collectText(tree2).join('|'));
+  check('inline confirmation repeats all three risk lines', panel ? findBy(panel, (n) => n.props?.className === 'sla-risk-line').length === 3 : false);
+  const guard = findBy(tree2, (n) => n.props?.className === 'sla-primary')[0];
+  check('inline confirmation keeps confirm disabled until acknowledged', guard?.props?.disabled === true);
+  const box = findBy(tree2, (n) => n.props?.className === 'sla-check')[0];
+  check('inline confirmation uses a themed checkbox', box?.props?.role === 'checkbox' && box?.props?.['aria-checked'] === false);
+  registered = main; // 换回主模块，后面的用例继续用它
+}
 
 /* 写入 */
 face.setMode('manual');

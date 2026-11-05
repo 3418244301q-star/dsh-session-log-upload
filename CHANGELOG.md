@@ -40,7 +40,8 @@
 | 0.5.7 | 11-04 21:50 | 排版：中文提示句连接处多了一个 ASCII 空格 |
 | 0.5.8 | 11-04 22:30 | 文档：README 补「版本要求」与预发布 semver 盲区 |
 | 0.5.9 | 11-04 22:45 | 文档：与同类插件的差异化声明 + 失效场景清单 |
-| **1.0.0** | 11-04 22:30 | 正式版：改名 `dsh-session-log-upload`，准备发布 npm |
+| 1.0.0 | 11-04 22:30 | 正式版：改名 `dsh-session-log-upload`，准备发布 npm |
+| **1.1.0** | 11-05 12:20 | 首次开启加风险确认：复用官方 `RiskConfirmation`，确认后直通 |
 
 ---
 
@@ -751,19 +752,69 @@ GitHub 仓库同步改名为 `dsh-session-log-upload`（旧地址由 GitHub 自�
 
 ---
 
+## 1.1.0 — 首次开启的风险确认
+
+1.0.0 补上了「默认关闭 + README 免责声明」，但开关本身仍是**一点就开**：用户看到的是
+「跨渠道会话日志上传」、「开启跨渠道上传」，不一定意识到这一步就等于把会话日志发往
+DeepSeek。本版在开关前面加一道确认。
+
+### 形态
+
+点开关由「关」到「开」时，先弹官方那个风险确认对话框——与「设置 → 权限」里切
+「完全权限」用的是同一个组件（`@deepseek-ai/dsh-client-ui-primitives` 的
+`RiskConfirmation`）。外观、遮罩、Esc、焦点管理、亮暗主题因此全部与官方一致，
+插件这边没有自绘任何弹层样式。
+
+内容比权限那个短，只讲这一次授权：
+
+- 标题：确认启用跨渠道上传？
+- 正文三行：日志去哪（用你已配置的 DSH API 凭据发往 DeepSeek）／不做脱敏且自动触发／
+  授权与合规由用户自己承担
+- 勾选框：我已了解风险，并愿意继续（未勾选时「启用上传」是禁用态）
+- 按钮：取消 / 启用上传
+
+### 判定
+
+- **只在首次**：确认过就把 `acknowledged: true` 写进配置，之后开关直通，不再打扰。
+- **关不确认**：由「开」到「关」直接生效。
+- **取消等于没点**：不写 `enabled`，开关保持原状，也不写 `acknowledged`。
+- **确认是一次原子动作**：`acknowledged` 与 `enabled` 一起写，不留下「已授权但没开」或
+  「开着但没授权」的中间态。
+
+### 兼容退路
+
+`RiskConfirmation` 是核心 Web 前端的静态模块导出。更老的核心若没有导出它，插件退化成
+**行内确认面板**（标题 + 三行 + 自绘勾选框 + 两个按钮，样式仍走主题变量），判定逻辑一字不差。
+两条路径在 `check-client.mjs` 里都跑过：假模块提供 `RiskConfirmation` 时断言弹层，
+不提供时断言行内面板。
+
+### 新增配置键
+
+`acknowledged: boolean`，默认 `false`，非 volatile（随配置持久化）。
+Host 侧不拿它做准入判断，它只是「用户确认过」的标记——要是拿它挡上传，
+手改配置启用插件的人会突然传不上去。
+
+### 验证
+
+parity 54 会话 × 4 档 = 216/216、runtime 49/49、client **51/51**（35 → 51，
+新增 16 条覆盖首次确认、取消、二次启用、关闭、退路面板）、envelope 54 会话 0 差异，
+`check-docs.mjs` 通过。
+
+---
+
 ## 验证工具一览
 
 | 脚本 | 作用 | 现在的状态 |
 |---|---|---|
-| `tools/check-core-parity.mjs` | 从 `app.asar` 取出核心包原样跑，与本插件逐字节对账 | **53 会话 × 4 档 = 212/212**，0 错误 |
+| `tools/check-core-parity.mjs` | 从 `app.asar` 取出核心包原样跑，与本插件逐字节对账 | **54 会话 × 4 档 = 216/216**，0 错误 |
 | `tools/check-runtime.mjs` | mock fetch + mock ctx 跑 Host 行为（结果码、并发、重试、卸载） | **49/49** |
-| `tools/check-client.mjs` | 假 `__ModuleLoader__` 里跑设置页控件，含点击后的结果提示 | **35/35** |
-| `tools/check-envelope.mjs` | 分段/水位的回归护栏（与 `tools/reference/` 比对，读真实日志） | 53 会话，0 差异 |
+| `tools/check-client.mjs` | 假 `__ModuleLoader__` 里跑设置页控件，含点击、结果提示、首次开启确认 | **51/51** |
+| `tools/check-envelope.mjs` | 分段/水位的回归护栏（与 `tools/reference/` 比对，读真实日志） | 54 会话，0 差异 |
 | `tools/check-docs.mjs` | 跑上面四个套件，与上面这张表比对数字 | 文档数字与实测一致 |
 
 > `node tools/check-docs.mjs` 会跑一遍套件并与本表比对。它盯的是**能被我改错的部分**：
 > runtime / client 的断言条数、parity 与 envelope 的内部一致性（会话数 × 档数 = 比对组数）以及
-> 必须是 0 的差异数。**会话数本身不做硬比对**——它随本机日志增长，今天 53、明天可能 56，
+> 必须是 0 的差异数。**会话数本身不做硬比对**——它随本机日志增长，今天 54、明天可能 56，
 > 那是环境在变，不是文档写错。
 
 复跑（在仓库根目录）：
@@ -794,7 +845,7 @@ node tools/check-docs.mjs          # 上面这张表与本文件数字的守卫
 
 ## 已知限制（未完成项）
 
-- **`manual` 档没有手动入口**：设置页还没有「立即补传」按钮，`manual` 目前等于「不自动传」。
+- **`manual` 档只有一个入口**：设置页的「立即上传」按整轮跑，不能指定某个会话单独补传。
 - **待传概览 / 单会话补传**：SPEC §4.9 里的建议行（`7 个会话待传，合计 1.2 MB`）未做。
 - **只有一行设置项，没有独立页面**：够用，但不是「会话日志上传」整块分区。
 - **无法证明服务端入库**：与官方客户端一样，2xx 是唯一信号。
@@ -806,19 +857,18 @@ node tools/check-docs.mjs          # 上面这张表与本文件数字的守卫
 ## 变更文件索引
 
 ```
-D:\dsh\3\
-├─ plugin\
-│  ├─ dsh-session-log-anywhere\
-│  │  ├─ index.js         Host 半场：判定、分段、上传、水位、限流、触发
-│  │  ├─ client.js        设置页那一行：自绘下拉 + 开关
-│  │  ├─ package.json     bundle + client 声明 + schemastery 依赖（v0.3.0）
-│  │  ├─ cordis.patch.yml 默认配置，enabled: false
-│  │  ├─ locale\{zh,en}.json  插件名与描述
-│  │  ├─ icon.svg
-│  │  ├─ README.md        用法与限制
-│  │  └─ CHANGELOG.md     本文件
-│  ├─ check-envelope.mjs  分段对账
-│  ├─ check-runtime.mjs   宿主行为
-│  └─ check-client.mjs    客户端行为
-└─ lib\、bin\、SPEC      原有规格与验证脚本（未改动）
+D:\dsh\3\dsh-session-sync\
+├─ index.js               Host 半场：判定、分段、上传、水位、限流、触发
+├─ client.js              设置页那一行：自绘下拉 + 开关 + 风险确认
+├─ package.json           bundle + client 声明 + schemastery 依赖
+├─ cordis.patch.yml       默认配置，enabled: false
+├─ tools\
+│  ├─ check-core-parity.mjs  与核心包逐字节对账
+│  ├─ check-runtime.mjs      宿主行为
+│  ├─ check-client.mjs       客户端行为（含首次开启确认）
+│  ├─ check-envelope.mjs     分段对账
+│  └─ check-docs.mjs         文档数字守卫
+├─ README.md              用法、差异与失效场景
+├─ CHANGELOG.md           本文件
+└─ LICENSE                MIT
 ```

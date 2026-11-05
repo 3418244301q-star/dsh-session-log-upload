@@ -43,6 +43,16 @@ window.__ModuleLoader__.load({
       '.sla-switch::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--dsw-alias-label-primary-foreground,#fff);box-shadow:0 1px 2px rgba(0,0,0,.28);transition:transform .15s ease}',
       '.sla-switch[aria-checked="true"]{background:var(--dsw-alias-brand-primary)}',
       '.sla-switch[aria-checked="true"]::after{transform:translateX(16px)}',
+      // 风险确认的退路面板：官方 RiskConfirmation 拿不到时才渲染，样式与行内控件同源。
+      '.sla-risk{box-sizing:border-box;margin-top:10px;padding:12px;display:flex;flex-direction:column;gap:8px;border:.5px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-1)}',
+      '.sla-risk-title{font-size:13px;line-height:18px;font-weight:500;color:var(--dsw-alias-label-primary)}',
+      '.sla-risk-line{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
+      '.sla-check{-webkit-appearance:none;appearance:none;display:flex;align-items:flex-start;gap:8px;padding:0;border:none;background:transparent;font:inherit;text-align:left;font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary);cursor:pointer}',
+      '.sla-box{flex:none;box-sizing:border-box;display:grid;place-items:center;width:16px;height:16px;margin-top:1px;border:.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l2));border-radius:4px;background:transparent;color:var(--dsw-alias-label-primary-foreground)}',
+      '.sla-box[aria-checked="true"]{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}',
+      '.sla-primary{-webkit-appearance:none;appearance:none;box-sizing:border-box;display:inline-flex;align-items:center;padding:4px 12px;font:inherit;font-size:12px;line-height:18px;border:.5px solid transparent;border-radius:7px;cursor:pointer;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}',
+      '.sla-primary:hover:not(:disabled){opacity:.86}',
+      '.sla-primary:disabled{opacity:.4;cursor:not-allowed}',
     ].join('');
     const tagId = 'dsh-session-log-upload/SettingsRow.module.css';
     if (typeof document !== 'undefined' && document.querySelector(`style[data-plugin-css="${tagId}"]`) === null) {
@@ -58,6 +68,18 @@ window.__ModuleLoader__.load({
       h('path', { d: 'M2 3.5 5 6.5 8 3.5', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' }));
     const tick = () => h('svg', { className: 'sla-tick', width: 12, height: 12, viewBox: '0 0 12 12', 'aria-hidden': true },
       h('path', { d: 'M2.5 6.2 4.8 8.5 9.5 3.5', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }));
+
+    /* 官方风险确认对话框（「设置 → 权限」切完全权限时弹的是同一个组件）。
+       它和内置组件共用一套弹层样式，主题、焦点、Esc 都由官方实现负责。
+       拿不到时（更老的核心没有导出）退化成行内确认面板，判定逻辑一致。 */
+    const RiskConfirmation = (() => {
+      try {
+        const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
+        return typeof primitives?.RiskConfirmation === 'function' ? primitives.RiskConfirmation : null;
+      } catch {
+        return null;
+      }
+    })();
 
     const en = {
       title: 'Upload Session Log for third-party channels',
@@ -84,6 +106,14 @@ window.__ModuleLoader__.load({
       noticeBlocked: '{n} session(s) have an event larger than the size cap, so nothing was sent. Raise maxBytes or trim that event.',
       noticeError: 'Upload failed. See the host log.',
       noticeFailed: 'Upload failed for {n} session(s). See the host log.',
+      riskTitle: 'Confirm enabling cross-channel upload?',
+      riskLine1: 'Once enabled, this plugin sends session logs from non-official channels to DeepSeek using the DSH API credentials you configured.',
+      riskLine2: 'It does not redact anything, and it triggers uploads automatically, which may put your account at risk.',
+      riskLine3: 'Confirm that you are authorized to upload this content, that you have finished any redaction you need, and that you accept compliance responsibility.',
+      riskAck: 'I understand the risk and want to continue',
+      riskCancel: 'Cancel',
+      riskConfirm: 'Enable upload',
+      close: 'Close',
     };
     const zh = {
       title: '跨渠道会话日志上传',
@@ -110,6 +140,14 @@ window.__ModuleLoader__.load({
       noticeBlocked: '有 {n} 个会话存在超过大小上限的单个事件，本次一个请求都没发。请调大上限或处理该事件。',
       noticeError: '上传失败，详情看宿主日志。',
       noticeFailed: '{n} 个会话上传失败，详情看宿主日志。',
+      riskTitle: '确认启用跨渠道上传？',
+      riskLine1: '启用后，本插件会把非官方渠道的会话日志，用你已配置的 DSH API 凭据发往 DeepSeek。',
+      riskLine2: '本插件不会自动脱敏，且以自动化方式触发上传，可能存在账户风险。',
+      riskLine3: '请确认你已获得上传授权、已完成必要脱敏，并自行承担合规责任。',
+      riskAck: '我已了解风险，并愿意继续',
+      riskCancel: '取消',
+      riskConfirm: '启用上传',
+      close: '关闭',
     };
 
     /** 主题内的下拉：按钮 + 浮层，键盘可达（方向键 / 回车 / Esc）。 */
@@ -252,14 +290,17 @@ window.__ModuleLoader__.load({
     }
 
     function SettingsRow(props) {
-      const { useConfig, setMode, setEnabled, t } = props;
+      const { useConfig, setMode, setEnabled, setAcknowledged, t } = props;
       const snapshot = typeof useConfig === 'function' ? useConfig((value) => value) : null;
       const config = snapshot?.value ?? {};
       const ready = snapshot?.status === 'ready' && snapshot?.writable !== false;
       const enabled = config.enabled === true;
       const mode = typeof config.mode === 'string' ? config.mode : 'deferred';
+      const acknowledged = config.acknowledged === true;
       const [busy, setBusy] = React.useState(false);
       const [notice, setNotice] = React.useState(null);
+      const [confirming, setConfirming] = React.useState(false);
+      const [riskAck, setRiskAck] = React.useState(false);
 
       React.useEffect(() => {
         if (!notice) return undefined;
@@ -299,13 +340,52 @@ window.__ModuleLoader__.load({
       const canUpload = ready && enabled && manualOnly && !busy;
       const descKey = mode === 'manual' ? 'descManual' : mode === 'realtime' ? 'descRealtime' : 'descDeferred';
 
+      /* 首次开启必须先过风险确认；确认过一次就记在配置里，之后开关直通。 */
+      const requestEnable = (next) => {
+        if (!next) {
+          setEnabled(false);
+          return;
+        }
+        if (acknowledged) {
+          setEnabled(true);
+          return;
+        }
+        setRiskAck(false);
+        setConfirming(true);
+      };
+      const cancelRisk = () => {
+        setConfirming(false);
+        setRiskAck(false);
+      };
+      const confirmRisk = () => {
+        setConfirming(false);
+        setRiskAck(false);
+        setAcknowledged(true);
+        setEnabled(true);
+      };
+      const riskLines = [t('riskLine1'), t('riskLine2'), t('riskLine3')];
+      const riskButtons = h('div', { className: 'sla-actions' },
+        h('button', { type: 'button', className: 'sla-upload', onClick: cancelRisk }, t('riskCancel')),
+        h('button', { type: 'button', className: 'sla-primary', disabled: !riskAck, onClick: confirmRisk }, t('riskConfirm')),
+      );
+      const riskTicks = h('button', {
+        type: 'button',
+        role: 'checkbox',
+        'aria-checked': riskAck,
+        className: 'sla-check',
+        onClick: () => setRiskAck(!riskAck),
+      },
+        h('span', { className: 'sla-box', 'aria-checked': riskAck, 'aria-hidden': true }, riskAck ? tick() : null),
+        h('span', null, t('riskAck')),
+      );
+
       const options = [
         { value: 'manual', label: t('modeManual') },
         { value: 'deferred', label: t('modeDeferred') },
         { value: 'realtime', label: t('modeRealtime') },
       ];
 
-      return h('div', { className: 'sla-row' },
+      const row = h('div', { className: 'sla-row' },
         h('div', { className: 'sla-left' },
           h('div', { className: 'sla-title' }, t('title')),
           h('div', { className: 'sla-desc' }, t(descKey)),
@@ -320,6 +400,15 @@ window.__ModuleLoader__.load({
             }, busy ? t('uploading') : t('uploadNow')),
             notice ? h('span', { className: 'sla-notice', 'data-tone': notice.tone }, notice.text) : null,
           ),
+          // 老核心拿不到官方弹层时，确认就地展开，判定与弹窗完全一致。
+          confirming && RiskConfirmation === null
+            ? h('div', { className: 'sla-risk', role: 'alertdialog', 'aria-label': t('riskTitle') },
+              h('div', { className: 'sla-risk-title' }, t('riskTitle')),
+              riskLines.map((line, index) => h('div', { key: index, className: 'sla-risk-line' }, line)),
+              riskTicks,
+              riskButtons,
+            )
+            : null,
         ),
         h('div', { className: 'sla-right' },
           h(ModeSelect, {
@@ -333,10 +422,28 @@ window.__ModuleLoader__.load({
             checked: enabled,
             disabled: !ready,
             ariaLabel: t('enable'),
-            onChange: (next) => setEnabled(next),
+            onChange: requestEnable,
           }),
         ),
       );
+
+      const modal = confirming && RiskConfirmation !== null
+        ? h(RiskConfirmation, {
+          open: true,
+          title: t('riskTitle'),
+          description: h(React.Fragment, null, riskLines.map((line, index) => h(React.Fragment, { key: index }, index > 0 ? h('br') : null, line))),
+          acknowledgeLabel: t('riskAck'),
+          cancelLabel: t('riskCancel'),
+          closeLabel: t('close'),
+          confirmLabel: t('riskConfirm'),
+          acknowledged: riskAck,
+          onAcknowledgedChange: (next) => setRiskAck(next === true),
+          onCancel: cancelRisk,
+          onConfirm: confirmRisk,
+        })
+        : null;
+
+      return h(React.Fragment, null, row, modal);
     }
 
     const inject = ['slots', 'locale', 'configForms'];
@@ -351,6 +458,7 @@ window.__ModuleLoader__.load({
         hooks: { config: form },
         setMode: (mode) => { Promise.resolve(form.set('mode', mode)).catch(() => {}); },
         setEnabled: (enabled) => { Promise.resolve(form.set('enabled', enabled)).catch(() => {}); },
+        setAcknowledged: (value) => { Promise.resolve(form.set('acknowledged', value)).catch(() => {}); },
       });
 
       // 等 Host 把这条 entry 的 Config 服务出来再挂行，避免配置还没就绪时渲染出空控件。
