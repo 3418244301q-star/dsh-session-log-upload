@@ -183,6 +183,39 @@ node tools/check-client.mjs       # 设置页控件：假 __ModuleLoader__
 作为 Host 插件安装到某个 profile（需要 `dsh` 的插件管理能力或 `plugin_manager`），
 bundle 清单在 `cordis.patch.yml`，默认 `enabled: false`。
 
+## 版本与发布
+
+版本号走 SemVer，`v` 前缀的 **annotated tag** 是唯一的发布标记（与 [oh-my-dsh](https://github.com/gulagala001/oh-my-dsh) 同一套做法）：
+
+| 改动性质 | 版本位 |
+|---|---|
+| 接口、配置键、水位写法、插槽位置的破坏性变更 | major |
+| 新能力（新结果码、新端点、新检测） | minor |
+| 行为修正、文档、测试 | patch |
+| 预发布 | `vX.Y.Z-rc.N` / `vX.Y.Z-alpha.N` |
+
+每次发布做四件事：
+
+1. `package.json` 与 `CHANGELOG.md` 同步到同一版本（抬头「当前版本」、版本总表、本版本段落）；
+2. 跑 `node tools/check-docs.mjs`（含 `check-version.mjs`，会拦住三处不一致）；
+3. 提交后打 annotated tag 并推送：
+
+   ```bash
+   git tag -a vX.Y.Z -m "一句话说明"
+   git push origin vX.Y.Z
+   ```
+
+4. 在 GitHub 上为该 tag 建 Release，标题写明**本插件版本与验证过的 DSH 核心版本**：
+
+   ```
+   dsh-session-log-upload 1.1.3 · DSH 0.2.1-rc.5
+   ```
+
+   正文直接取 CHANGELOG 对应段落。写清核心版本是有意为之——这个插件依赖若干未公开的内部契约，
+   「在哪个核心版本上验证过」本身就是兼容性信息。
+
+`v1.1.3` 之前的提交没有标签：包名在 1.0.0 改过，早于改名前的版本号属于历史记录，回打标签只会误导。
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).

@@ -61,6 +61,16 @@ const SUITES = [
     },
   },
   {
+    name: 'check-version.mjs',
+    row: /check-version\.mjs/,
+    parse: (out) => Number(out.match(/(\d+)\/\d+ passed/)?.[1] ?? NaN),
+    expect: (row, actual) => {
+      const m = row.match(/\*\*(\d+)\/\d+\*\*/);
+      if (!m) return ['cannot parse the version row'];
+      return Number(m[1]) === actual ? [] : [`version ${m[1]} != ${actual}`];
+    },
+  },
+  {
     name: 'check-envelope.mjs',
     row: /check-envelope\.mjs/,
     parse: (out) => {

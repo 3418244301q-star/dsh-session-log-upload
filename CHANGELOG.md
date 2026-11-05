@@ -976,9 +976,10 @@ parity 220/220、envelope 55 会话 0 差异、`check-docs` 通过。
 | `tools/check-runtime.mjs` | mock fetch + mock ctx 跑 Host 行为（结果码、并发、重试、卸载、状态端点） | **57/57** |
 | `tools/check-client.mjs` | 假 `__ModuleLoader__` 里跑设置页控件：结果提示、每次开启的确认、写失败、无 key 提醒 | **63/63** |
 | `tools/check-envelope.mjs` | 分段/水位的回归护栏（与 `tools/reference/` 比对，读真实日志） | 55 会话，0 差异；0 会话时 exit 2 |
-| `tools/check-docs.mjs` | 跑上面四个套件，与上面这张表比对数字 | 文档数字与实测一致 |
+| `tools/check-version.mjs` | `package.json`、CHANGELOG 抬头与总表、git 标签三处是否同一版本 | **5/5** |
+| `tools/check-docs.mjs` | 跑上面五个套件，与上面这张表比对数字 | 文档数字与实测一致 |
 
-> `node tools/check-docs.mjs` 会跑一遍套件并与本表比对。它盯的是**能被我改错的部分**：
+> `node tools/check-docs.mjs` 会跑一遍套件（含版本守卫）并与本表比对。它盯的是**能被我改错的部分**：
 > runtime / client 的断言条数、parity 与 envelope 的内部一致性（会话数 × 档数 = 比对组数）以及
 > 必须是 0 的差异数。**会话数本身不做硬比对**——它随本机日志增长，今天 55、明天可能 58，
 > 那是环境在变，不是文档写错。
@@ -990,6 +991,7 @@ node tools/check-core-parity.mjs   # 需要 app.asar；位置不同用 DSH_ASAR 
 node tools/check-runtime.mjs
 node tools/check-client.mjs
 node tools/check-envelope.mjs
+node tools/check-version.mjs       # 版本号 / CHANGELOG / git 标签是否一致
 node tools/check-docs.mjs          # 上面这张表与本文件数字的守卫
 ```
 
