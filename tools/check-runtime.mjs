@@ -103,7 +103,7 @@ function makeSessionFromEvents({ id, events }) {
   return { session, events };
 }
 
-async function boot(config, sessions) {
+async function boot(config, sessions, options = {}) {
   const handlers = [];
   const disposers = [];
   const requests = [];
@@ -120,7 +120,12 @@ async function boot(config, sessions) {
       warn(message) { this.entries.push(['warn', message]); },
       error(message) { this.entries.push(['error', message]); },
     },
-    credentials: { resolve: async () => ({ value: 'sk-test-0123456789abcdef' }) },
+    credentials: {
+      resolve: async () => {
+        if (options.noKey === true) return undefined;
+        return { value: 'sk-test-0123456789abcdef' };
+      },
+    },
     sessions: {
       list: () => sessions.map((item) => item.session),
       get: (id) => sessions.map((item) => item.session).find((item) => String(item.id) === String(id)),
@@ -248,10 +253,12 @@ function fakeRes() {
   return res;
 }
 
-/** 通过注册的 HTTP 路由发一次同源 POST。 */
-const post = (route) => {
+/** 通过注册的 HTTP 路由发一次同源请求（默认 POST）。 */
+const post = (route, options = {}) => {
   const res = fakeRes();
-  return route.handler({ method: 'POST', headers: { host: '127.0.0.1:3080', origin: 'http://127.0.0.1:3080', 'x-dsh-sync': '1' } }, res)
+  const method = options.method ?? 'POST';
+  const origin = options.origin ?? 'http://127.0.0.1:3080';
+  return route.handler({ method, headers: { host: '127.0.0.1:3080', origin, 'x-dsh-sync': '1' } }, res)
     .then(() => ({ status: res.statusCode, json: JSON.parse(res.state.body || '{}') }));
 };
 
@@ -302,6 +309,38 @@ const post = (route) => {
     const res = fakeRes();
     await routes[0].handler({ method: 'POST', headers: { host: '127.0.0.1:3080', origin: 'http://evil.example', 'x-dsh-sync': '1' } }, res);
     check('cross-origin request is rejected', res.statusCode === 403, String(res.statusCode));
+  }
+}
+
+/* 7b) 状态端点：告诉界面有没有可用的 API key */
+{
+  const { session } = makeSession({ id: 'session-status' });
+  const { routes } = await boot({ ...base, mode: 'manual' }, [{ session }]);
+  const route = routes.find((r) => r.path === '/__dsh-session-log-upload/status');
+  check('registers the status route', Boolean(route), routes.map((r) => r.path).join(','));
+
+  const ok = await post(route, { method: 'GET' });
+  check('status reports the key as present', ok.json.hasKey === true && ok.json.ok === true, JSON.stringify(ok.json));
+  check('status never returns the key itself', !JSON.stringify(ok.json).includes('sk-test'), JSON.stringify(ok.json));
+  check('status echoes the credential ref, not a secret', ok.json.keyRef === 'DEEPSEEK_API_KEY', String(ok.json.keyRef));
+
+  // 没有 key 的宿主
+  {
+    const bare = await boot({ ...base, mode: 'manual' }, [{ session }], { noKey: true });
+    const bareRoute = bare.routes.find((r) => r.path === '/__dsh-session-log-upload/status');
+    const missing = await post(bareRoute, { method: 'GET' });
+    check('status reports a missing key', missing.json.hasKey === false, JSON.stringify(missing.json));
+  }
+
+  // 没有同源脚本头 → 403；跨源 → 403；非 GET → 405
+  {
+    const res = fakeRes();
+    await route.handler({ method: 'GET', headers: { host: '127.0.0.1:3080' } }, res);
+    check('status needs the script header too', res.statusCode === 403, String(res.statusCode));
+    const cross = await post(route, { method: 'GET', origin: 'http://evil.example' });
+    check('status rejects a cross-origin request', cross.status === 403 && cross.json.code === 'origin', JSON.stringify(cross.json));
+    const wrong = await post(route, { method: 'POST' });
+    check('status rejects non-GET', wrong.status === 405, String(wrong.status));
   }
 }
 

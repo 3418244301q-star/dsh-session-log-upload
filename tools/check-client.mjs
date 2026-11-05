@@ -164,9 +164,11 @@ function render(state, options = {}, slots) {
   hookSlots = slots ?? [
     options.busy === true,
     options.notice ?? null,
+    options.keyState ?? 'unknown', // SettingsRow：API key 检测结果
     options.confirming === true,   // SettingsRow：是否处于风险确认
     options.riskAck === true,      // SettingsRow：确认框是否已勾选
-    undefined,                     // SettingsRow 的 useEffect 槽位
+    undefined,                     // SettingsRow：key 检测的 useEffect 槽位
+    undefined,                     // SettingsRow：结果提示自动消失的 useEffect 槽位
     options.open === true,
     options.openIndex ?? 0,
   ];
@@ -262,8 +264,14 @@ check('button becomes active in manual mode', manualBtn?.props?.disabled === fal
 check('button is disabled while the plugin is off', findBy(render({ enabled: false, mode: 'manual' }), (n) => n.props?.className === 'sla-upload')[0]?.props?.disabled === true);
 
 const calls = [];
+let statusHasKey = true;
+let statusMode = 'ok';
 globalThis.fetch = async (url, init) => {
   calls.push({ url, method: init?.method });
+  if (String(url).includes('/status')) {
+    if (statusMode === 'error') return { ok: false, status: 500, json: async () => ({ ok: false, code: 'boom' }) };
+    return { ok: true, json: async () => ({ ok: true, hasKey: statusHasKey, keyRef: 'DEEPSEEK_API_KEY' }) };
+  }
   return { json: async () => ({ ok: true, code: 'uploaded', sessions: 2, bytes: 20480 }) };
 };
 await manualBtn.props.onClick();
@@ -304,6 +312,45 @@ check('notice carries its tone', noticeNode?.props?.['data-tone'] === 'success')
   const againTree = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
   check('every enable asks again', findBy(againTree, (n) => n.props?.className === 'fake-risk').length === 1);
   check('the second round writes nothing by itself', writes.length === againWrites, JSON.stringify(writes.slice(againWrites)));
+
+  // 没配 key：不许启用，并且要在行里常驻提醒
+  {
+    const before = writes.length;
+    statusHasKey = false;
+    const fresh = render({ enabled: false, mode: 'deferred' });
+    findBy(fresh, (n) => n.type === 'button' && n.props?.role === 'switch')[0].props.onClick();
+    let tree = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+    findBy(tree, (n) => n.props?.className === 'fake-risk')[0].props.onAcknowledgedChange(true);
+    tree = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+    await findBy(tree, (n) => n.props?.className === 'fake-risk')[0].props.onConfirm();
+    check('a missing api key blocks enabling', writes.length === before, JSON.stringify(writes.slice(before)));
+    const blockedTree = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+    const noticeNode = findBy(blockedTree, (n) => n.props?.className === 'sla-notice')[0];
+    check('a missing api key explains why enabling was cancelled', noticeNode?.props?.['data-tone'] === 'error' && collectText(blockedTree).includes(ZH.noticeNoKeyOnEnable), collectText(blockedTree).join('|'));
+    const warn = findBy(blockedTree, (n) => n.props?.className === 'sla-warn')[0];
+    check('the row keeps warning while no key is configured', Boolean(warn) && collectText(warn).includes(ZH.keyMissing), collectText(blockedTree).join('|'));
+    const recheckBtn = findBy(blockedTree, (n) => n.props?.className === 'sla-link')[0];
+    check('the warning offers a recheck', Boolean(recheckBtn) && collectText(recheckBtn).includes(ZH.recheck));
+    statusHasKey = true;
+    await recheckBtn.props.onClick();
+    const recovered = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+    check('a configured key clears the warning', findBy(recovered, (n) => n.props?.className === 'sla-warn').length === 0, collectText(recovered).join('|'));
+  }
+
+  // 宿主答不上来（5xx / 非 JSON）时不能拦人：fail-open 才不会被宿主异常锁死
+  {
+    const before = writes.length;
+    statusMode = 'error';
+    const fresh = render({ enabled: false, mode: 'deferred' });
+    findBy(fresh, (n) => n.type === 'button' && n.props?.role === 'switch')[0].props.onClick();
+    let tree = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+    findBy(tree, (n) => n.props?.className === 'fake-risk')[0].props.onAcknowledgedChange(true);
+    tree = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+    await findBy(tree, (n) => n.props?.className === 'fake-risk')[0].props.onConfirm();
+    statusMode = 'ok';
+    check('an unreadable status response does not block enabling', JSON.stringify(writes.slice(before)) === JSON.stringify([['enabled', true]]), JSON.stringify(writes.slice(before)));
+    check('an unreadable status response shows no key warning', findBy(render({ enabled: true, mode: 'deferred' }, {}, hookSlots), (n) => n.props?.className === 'sla-warn').length === 0);
+  }
 
   // 配置只读时不能让用户点下去：门禁也要传给弹层，而不是只在开关上挡
   {

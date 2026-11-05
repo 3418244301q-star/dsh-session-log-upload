@@ -893,6 +893,22 @@ export function apply(ctx, config) {
    * 只接受同源 POST；落在本机监听端口上，不做写入磁盘之类的高危动作，
    * 最坏情况是重复触发一次上传（冷却 + 水位保证不会重复发送内容）。
    */
+  /*
+   * 两条路由共用的同源判定：自定义头（跨源脚本发不出）+ Origin/Host 比对（挡住浏览器跨源）。
+   * 本机进程伪造这两个头是挡不住的——这里防的是网页，不是本机的本地进程。
+   * 返回 null 表示放行，否则返回拒绝码。
+   */
+  const guard = (req) => {
+    if (req.headers['x-dsh-sync'] !== '1') return 'header';
+    const origin = req.headers.origin;
+    if (origin === undefined) return null;
+    try {
+      return new URL(origin).host === req.headers.host ? null : 'origin';
+    } catch {
+      return 'origin';
+    }
+  };
+
   const webServer = ctx.get?.('webServer');
   if (webServer?.register) {
     const unregister = webServer.register({
@@ -913,18 +929,8 @@ export function apply(ctx, config) {
           return send(204, {});
         }
         if (req.method !== 'POST') return send(405, { ok: false, code: 'method' });
-        // 自定义头是同源脚本才发得出来的；挡住"别的页面/随便一个本机进程 POST 一下"。
-        if (req.headers['x-dsh-sync'] !== '1') return send(403, { ok: false, code: 'header' });
-        const origin = req.headers.origin;
-        if (origin !== undefined) {
-          let sameOrigin = false;
-          try {
-            sameOrigin = new URL(origin).host === req.headers.host;
-          } catch {
-            sameOrigin = false;
-          }
-          if (!sameOrigin) return send(403, { ok: false, code: 'origin' });
-        }
+        const denied = guard(req);
+        if (denied !== null) return send(403, { ok: false, code: denied });
         try {
           const result = await manualUpload();
           // ok 与结果码必须同口径：失败类是 false，其余（含 info 语气的 busy / official-owned）是 true。
@@ -937,6 +943,50 @@ export function apply(ctx, config) {
       },
     });
     if (typeof unregister === 'function') ctx.effect(() => unregister);
+  }
+
+  /*
+   * 设置行的状态查询：现在有没有可用的 API 凭据。
+   * 只读、不消耗额度、不发外部请求，客户端靠它决定是否显示「没配 key」的提醒。
+   * 与上传端点共用同一个 guard()：挡浏览器跨源；本机进程伪造头是挡不住的（也不指望）。
+   */
+  if (webServer?.register) {
+    const unregisterStatus = webServer.register({
+      kind: 'exact',
+      path: '/__dsh-session-log-upload/status',
+      handler: async (req, res) => {
+        const send = (status, payload) => {
+          try {
+            res.statusCode = status;
+            res.setHeader('content-type', 'application/json; charset=utf-8');
+            res.setHeader('cache-control', 'no-store');
+            res.end(JSON.stringify(payload));
+          } catch {
+            /* 连接已经断了，忽略 */
+          }
+        };
+        if (req.method === 'OPTIONS') return send(204, {});
+        if (req.method !== 'GET') return send(405, { ok: false, code: 'method' });
+        const denied = guard(req);
+        if (denied !== null) return send(403, { ok: false, code: denied });
+        const cfg = readConfig(config);
+        let hasKey = false;
+        try {
+          hasKey = (await resolveKey(cfg)) !== undefined;
+        } catch (error) {
+          log('warn', `status check failed: ${error?.message ?? error}`);
+        }
+        // 只回答「有没有」，不返回任何 key 片段。
+        return send(200, {
+          ok: true,
+          enabled: cfg.enabled,
+          mode: cfg.mode,
+          hasKey,
+          keyRef: cfg.apiKeyRef,
+        });
+      },
+    });
+    if (typeof unregisterStatus === 'function') ctx.effect(() => unregisterStatus);
   }
 
   /* 启动扫描：崩溃 / 强杀时收尾触发不会发生，这是唯一能补上的路径。 */

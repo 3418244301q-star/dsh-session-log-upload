@@ -30,6 +30,8 @@ window.__ModuleLoader__.load({
       '.sla-notice{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
       '.sla-notice[data-tone="success"]{color:var(--dsw-alias-state-success-primary)}',
       '.sla-notice[data-tone="error"]{color:var(--dsw-alias-state-error-primary)}',
+      '.sla-warn{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px;margin-top:4px;font-size:12px;line-height:18px;color:var(--dsw-alias-state-warn-label,var(--dsw-alias-state-warn-primary))}',
+      '.sla-link{-webkit-appearance:none;appearance:none;padding:0;border:none;background:transparent;font:inherit;font-size:12px;line-height:18px;color:var(--dsw-alias-link);cursor:pointer;text-decoration:underline}',
       '.sla-select{position:relative}',
       '.sla-trigger{-webkit-appearance:none;appearance:none;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:space-between;gap:10px;min-width:126px;padding:6px 10px;font:inherit;font-size:13px;line-height:18px;font-weight:400;text-align:left;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:.5px solid var(--dsw-alias-border-l2);border-radius:8px;cursor:pointer;transition:background .12s ease,border-color .12s ease}',
       '.sla-trigger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}',
@@ -117,6 +119,9 @@ window.__ModuleLoader__.load({
       riskLine3: 'Confirm that you are authorized to upload this content, that you have finished any redaction you need, and that you accept compliance responsibility.',
       noticeConfirmFailed: 'The setting could not be saved, so nothing was enabled. See the host log.',
       noticeDisableFailed: 'Could not turn it off — the setting was not saved. Uploads may still run; retry or check the host log.',
+      noticeNoKeyOnEnable: 'No usable API key was found, so enabling was cancelled. Add one under Settings → Models, then try again.',
+      keyMissing: 'No usable API key found — nothing is uploaded right now.',
+      recheck: 'Check again',
       riskAck: 'I understand the risk and want to continue',
       riskCancel: 'Cancel',
       riskConfirm: 'Enable upload',
@@ -153,6 +158,9 @@ window.__ModuleLoader__.load({
       riskLine3: '请确认你已获得上传授权、已完成必要脱敏，并自行承担合规责任。',
       noticeConfirmFailed: '配置没写进去，本次未启用。详情看宿主日志。',
       noticeDisableFailed: '关闭失败：配置没写进去，插件可能仍在运行。请重试或看宿主日志。',
+      noticeNoKeyOnEnable: '未检测到可用的 API Key，已取消启用。到「设置 → 模型」里填入后再试。',
+      keyMissing: '未检测到可用的 API Key，当前不会上传任何内容。',
+      recheck: '重新检测',
       riskAck: '我已了解风险，并愿意继续',
       riskCancel: '取消',
       riskConfirm: '启用上传',
@@ -307,8 +315,45 @@ window.__ModuleLoader__.load({
       const mode = typeof config.mode === 'string' ? config.mode : 'deferred';
       const [busy, setBusy] = React.useState(false);
       const [notice, setNotice] = React.useState(null);
+      const [keyState, setKeyState] = React.useState('unknown');
       const [confirming, setConfirming] = React.useState(false);
       const [riskAck, setRiskAck] = React.useState(false);
+
+      /*
+       * 有没有可用的 API 凭据：问宿主，不花额度。
+       * 只有「宿主明确回答 ok 且 hasKey=false」才拦；路由不存在、5xx、非 JSON、超时一律放行，
+       * 否则一次宿主异常就会把用户锁在门外。
+       */
+      const checkKey = async () => {
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        const timer = controller ? setTimeout(() => controller.abort(), 8000) : null;
+        try {
+          const response = await fetch('/__dsh-session-log-upload/status', {
+            headers: { 'x-dsh-sync': '1' },
+            signal: controller?.signal,
+          });
+          // 非 2xx 一律当「问不到」，不是「没有 key」——带体返回的 4xx 不能反过来拦人。
+          if (response?.ok !== true) {
+            setKeyState('unknown');
+            return true;
+          }
+          const data = await response.json();
+          const hasKey = data?.hasKey === true;
+          setKeyState(hasKey ? 'ok' : 'missing');
+          return hasKey;
+        } catch {
+          setKeyState('unknown');
+          return true;
+        } finally {
+          if (timer !== null) clearTimeout(timer);
+        }
+      };
+
+      React.useEffect(() => {
+        if (!ready || !enabled) return undefined;
+        checkKey();
+        return undefined;
+      }, [ready, enabled]);
 
       React.useEffect(() => {
         if (!notice) return undefined;
@@ -373,6 +418,11 @@ window.__ModuleLoader__.load({
       const confirmRisk = async () => {
         setConfirming(false);
         setRiskAck(false);
+        // 启用前先确认 key 在：否则会进入「开着但一个字节都传不出去」的静默状态。
+        if (!(await checkKey())) {
+          setNotice({ tone: 'error', text: t('noticeNoKeyOnEnable') });
+          return;
+        }
         try {
           await setEnabled(true);
           setNotice(null);
@@ -408,6 +458,16 @@ window.__ModuleLoader__.load({
           h('div', { className: 'sla-title' }, t('title')),
           h('div', { className: 'sla-desc' }, t(descKey)),
           enabled ? null : h('div', { className: 'sla-note' }, t('disabledNote')),
+          keyState === 'missing'
+            ? h('div', { className: 'sla-warn' },
+              h('span', null, t('keyMissing')),
+              h('button', {
+                type: 'button',
+                className: 'sla-link',
+                onClick: () => checkKey(),
+              }, t('recheck')),
+            )
+            : null,
           h('div', { className: 'sla-actions' },
             h('button', {
               type: 'button',
