@@ -214,6 +214,10 @@ bundle 清单在 `cordis.patch.yml`，默认 `enabled: false`。
    正文直接取 CHANGELOG 对应段落。写清核心版本是有意为之——这个插件依赖若干未公开的内部契约，
    「在哪个核心版本上验证过」本身就是兼容性信息。
 
+每个 Release 附两个文件：`dsh-session-log-upload-X.Y.Z.tgz`（`npm pack` 产物，可直接
+`pnpm add <文件>` 离线安装，或用它核对字节）和 `SHA256SUMS-X.Y.Z.txt`。
+GitHub 自动生成的 Source code (zip/tar.gz) 也在，但那只是仓库快照，不带 npm 打包信息。
+
 `v1.1.3` 之前的提交没有标签：包名在 1.0.0 改过，早于改名前的版本号属于历史记录，回打标签只会误导。
 
 ## License
