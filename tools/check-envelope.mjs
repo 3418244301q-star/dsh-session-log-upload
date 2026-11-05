@@ -5,8 +5,9 @@
  *   node tools/check-envelope.mjs            # 扫所有会话
  *   node tools/check-envelope.mjs <关键词>   # 只测匹配的会话
  */
-import { readSession, listSessionFiles, acceptedThrough as refAccepted, pendingEvents, inheritedEventCount } from './reference/store.mjs';
+import { readSession, listSessionFiles, dshHome, acceptedThrough as refAccepted, pendingEvents, inheritedEventCount } from './reference/store.mjs';
 import { segmentEnvelope } from './reference/envelope.mjs';
+import path from 'node:path';
 import { __internals } from '../index.js';
 
 const needle = process.argv[2]?.toLowerCase();
@@ -75,6 +76,18 @@ for (const file of files) {
     console.log(`FAIL ${file}`);
     for (const p of problems) console.log(`     ${p}`);
   }
+}
+
+/*
+ * 空语料不能判绿：listSessionFiles() 会吞掉 readdir 的错误，读不到 ~/.dsh 时它返回空数组，
+ * 于是一个「什么都没查」的运行看起来和「全部一致」一模一样。这里把它变成显式失败。
+ */
+if (checked === 0) {
+  const root = path.join(dshHome(), 'sessions');
+  console.log('');
+  console.log(`ENVELOPE-NOT-RUN: 0 会话，本次运行不构成验证（${files.length === 0 ? `${root} 下没有可读的会话日志` : `${files.length} 个日志文件全部读取失败`}）`);
+  console.log('检查 DSH_HOME，或者确认传给脚本的关键词没有把语料筛空。');
+  process.exit(2);
 }
 
 console.log(`\nchecked ${checked} session(s), ${mismatched} mismatch(es)`);

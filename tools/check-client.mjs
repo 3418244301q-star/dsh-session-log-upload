@@ -87,6 +87,7 @@ const FakeRisk = (props) => React.createElement('div', {
   'data-open': String(props.open),
   'data-acknowledged': String(props.acknowledged),
   'data-title': props.title,
+  'data-disabled': String(props.disabled === true),
   'data-lines': flatText(props.description).join('/'),
   onAcknowledgedChange: props.onAcknowledgedChange,
   onConfirm: props.onConfirm,
@@ -108,8 +109,10 @@ check('factory returns apply/inject', typeof mod.apply === 'function' && Array.i
 
 /* 假 Host 侧 */
 const writes = [];
+let failOn = null; // 设为某个 key 时，那一次写直接抛错
 const form = {
   set: async (key, value) => {
+    if (failOn === key) throw new Error(`refused: ${key}`);
     writes.push([key, value]);
     return true;
   },
@@ -168,10 +171,9 @@ function render(state, options = {}, slots) {
     options.openIndex ?? 0,
   ];
   const props = {
-    useConfig: (selector) => selector({ value: state, status: 'ready', writable: true }),
+    useConfig: (selector) => selector({ value: state, status: 'ready', writable: options.writable !== false }),
     setMode: face.setMode,
     setEnabled: face.setEnabled,
-    setAcknowledged: face.setAcknowledged,
     t: (key) => ZH[key] ?? key,
   };
   for (let pass = 0; pass < 8; pass += 1) {
@@ -272,7 +274,7 @@ const noticeNode = findBy(noticeTree, (n) => n.props?.className === 'sla-notice'
 check('renders the result notice', Boolean(noticeNode), collectText(noticeTree).join('|'));
 check('notice carries its tone', noticeNode?.props?.['data-tone'] === 'success');
 
-/* 风险确认：首次开启必须过一遍 */
+/* 风险确认：每次开启都要过一遍 */
 {
   const before = writes.length;
   const fresh = render({ enabled: false, mode: 'deferred' });
@@ -280,7 +282,7 @@ check('notice carries its tone', noticeNode?.props?.['data-tone'] === 'success')
   switchNode.props.onClick();
   const afterToggle = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
   const risk = findBy(afterToggle, (n) => n.props?.className === 'fake-risk')[0];
-  check('first enable opens the confirmation before turning on', Boolean(risk), collectText(afterToggle).join('|'));
+  check('enabling opens the confirmation first', Boolean(risk), collectText(afterToggle).join('|'));
   check('confirmation is titled as an enable action', risk?.props?.['data-title'] === ZH.riskTitle, String(risk?.props?.['data-title']));
   check('confirmation spells out all three risk lines', risk?.props?.['data-lines'] === [ZH.riskLine1, ZH.riskLine2, ZH.riskLine3].join('/'), String(risk?.props?.['data-lines']));
   check('confirm stays disabled until acknowledged', risk?.props?.['data-acknowledged'] === 'false', String(risk?.props?.['data-acknowledged']));
@@ -292,22 +294,62 @@ check('notice carries its tone', noticeNode?.props?.['data-tone'] === 'success')
   const acked = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
   const ackedRisk = findBy(acked, (n) => n.props?.className === 'fake-risk')[0];
   check('the acknowledgement is reflected back into the dialog', ackedRisk?.props?.['data-acknowledged'] === 'true');
-  ackedRisk.props.onConfirm();
-  check('confirming records the acknowledgement', writes.some(([k, v]) => k === 'acknowledged' && v === true), JSON.stringify(writes.slice(before)));
-  check('confirming enables the plugin', writes.some(([k, v]) => k === 'enabled' && v === true), JSON.stringify(writes.slice(before)));
+  await ackedRisk.props.onConfirm();
+  check('confirming writes exactly one key', JSON.stringify(writes.slice(before)) === JSON.stringify([['enabled', true]]), JSON.stringify(writes.slice(before)));
 
-  // 已经确认过：开关直通，不再弹
+  // 授权不落盘：再开一次还得问
   const againWrites = writes.length;
-  const known = render({ enabled: false, mode: 'deferred', acknowledged: true });
-  findBy(known, (n) => n.type === 'button' && n.props?.role === 'switch')[0].props.onClick();
-  check('a returning user is not asked twice', findBy(render({ enabled: false, mode: 'deferred', acknowledged: true }, {}, hookSlots), (n) => n.props?.className === 'fake-risk').length === 0);
-  check('a returning user enables straight away', writes.slice(againWrites).some(([k, v]) => k === 'enabled' && v === true), JSON.stringify(writes.slice(againWrites)));
+  const again = render({ enabled: false, mode: 'deferred' });
+  findBy(again, (n) => n.type === 'button' && n.props?.role === 'switch')[0].props.onClick();
+  const againTree = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+  check('every enable asks again', findBy(againTree, (n) => n.props?.className === 'fake-risk').length === 1);
+  check('the second round writes nothing by itself', writes.length === againWrites, JSON.stringify(writes.slice(againWrites)));
+
+  // 配置只读时不能让用户点下去：门禁也要传给弹层，而不是只在开关上挡
+  {
+    const ro = render({ enabled: false, mode: 'deferred' }, { confirming: true, writable: false });
+    const roRisk = findBy(ro, (n) => n.props?.className === 'fake-risk')[0];
+    check('a read-only config blocks the confirmation too', roRisk?.props?.['data-disabled'] === 'true', String(roRisk?.props?.['data-disabled']));
+    const rw = render({ enabled: false, mode: 'deferred' }, { confirming: true, writable: true });
+    check('a writable config leaves the confirmation usable', findBy(rw, (n) => n.props?.className === 'fake-risk')[0]?.props?.['data-disabled'] === 'false');
+  }
+
+  // 那一次写失败：插件不能变成开着的，而且必须出声
+  {
+    const before = writes.length;
+    const fresh = render({ enabled: false, mode: 'deferred' });
+    findBy(fresh, (n) => n.type === 'button' && n.props?.role === 'switch')[0].props.onClick();
+    let tree = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+    findBy(tree, (n) => n.props?.className === 'fake-risk')[0].props.onAcknowledgedChange(true);
+    tree = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+    failOn = 'enabled';
+    await findBy(tree, (n) => n.props?.className === 'fake-risk')[0].props.onConfirm();
+    failOn = null;
+    check('a failed confirmation writes nothing at all', writes.length === before, JSON.stringify(writes.slice(before)));
+    const after = render({ enabled: false, mode: 'deferred' }, {}, hookSlots);
+    const noticeNode = findBy(after, (n) => n.props?.className === 'sla-notice')[0];
+    check('a failed confirmation is reported instead of swallowed', noticeNode?.props?.['data-tone'] === 'error' && collectText(after).includes(ZH.noticeConfirmFailed), collectText(after).join('|'));
+  }
 
   // 关闭方向不做确认
   const offWrites = writes.length;
-  const on = render({ enabled: true, mode: 'deferred', acknowledged: true });
+  const on = render({ enabled: true, mode: 'deferred' });
   findBy(on, (n) => n.type === 'button' && n.props?.role === 'switch')[0].props.onClick();
-  check('turning it off needs no confirmation', writes.slice(offWrites).every(([k]) => k !== 'acknowledged') && writes.slice(offWrites).some(([k, v]) => k === 'enabled' && v === false), JSON.stringify(writes.slice(offWrites)));
+  const offTree = render({ enabled: true, mode: 'deferred' }, {}, hookSlots);
+  check('turning it off needs no confirmation', findBy(offTree, (n) => n.props?.className === 'fake-risk').length === 0 && JSON.stringify(writes.slice(offWrites)) === JSON.stringify([['enabled', false]]), JSON.stringify(writes.slice(offWrites)));
+
+  // 关掉失败是 fail-open，必须说出来（否则用户以为停了、其实还在传）
+  {
+    const before = writes.length;
+    const on2 = render({ enabled: true, mode: 'deferred' });
+    failOn = 'enabled';
+    await findBy(on2, (n) => n.type === 'button' && n.props?.role === 'switch')[0].props.onClick();
+    failOn = null;
+    check('a failed disable writes nothing', writes.length === before, JSON.stringify(writes.slice(before)));
+    const after = render({ enabled: true, mode: 'deferred' }, {}, hookSlots);
+    const node = findBy(after, (n) => n.props?.className === 'sla-notice')[0];
+    check('a failed disable is reported, not swallowed', node?.props?.['data-tone'] === 'error' && collectText(after).includes(ZH.noticeDisableFailed), collectText(after).join('|'));
+  }
 }
 
 /* 老核心没有 RiskConfirmation：确认就地展开，判定不变 */
@@ -321,7 +363,6 @@ check('notice carries its tone', noticeNode?.props?.['data-tone'] === 'success')
     useConfig: (selector) => selector(legacyState),
     setMode: legacyFace.setMode,
     setEnabled: legacyFace.setEnabled,
-    setAcknowledged: legacyFace.setAcknowledged,
     t: (key) => ZH[key] ?? key,
   };
   hookSlots = [false, null, false, false, undefined, false, 0];

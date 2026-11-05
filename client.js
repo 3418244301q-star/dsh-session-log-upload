@@ -4,6 +4,11 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
 
+    /** 只发不等、也不让 rejection 变成未处理异常——用在"改了就行"的开关上。 */
+    const swallow = (promise) => {
+      Promise.resolve(promise).catch(() => {});
+    };
+
     /*
      * 控件全部只用主题 token，不写死颜色：
      * 官方亮色/暗色，以及带自定义主题的皮肤，都会自动跟上。
@@ -110,6 +115,8 @@ window.__ModuleLoader__.load({
       riskLine1: 'Once enabled, this plugin sends session logs from non-official channels to DeepSeek using the DSH API credentials you configured.',
       riskLine2: 'It does not redact anything, and it triggers uploads automatically, which may put your account at risk.',
       riskLine3: 'Confirm that you are authorized to upload this content, that you have finished any redaction you need, and that you accept compliance responsibility.',
+      noticeConfirmFailed: 'The setting could not be saved, so nothing was enabled. See the host log.',
+      noticeDisableFailed: 'Could not turn it off — the setting was not saved. Uploads may still run; retry or check the host log.',
       riskAck: 'I understand the risk and want to continue',
       riskCancel: 'Cancel',
       riskConfirm: 'Enable upload',
@@ -144,6 +151,8 @@ window.__ModuleLoader__.load({
       riskLine1: '启用后，本插件会把非官方渠道的会话日志，用你已配置的 DSH API 凭据发往 DeepSeek。',
       riskLine2: '本插件不会自动脱敏，且以自动化方式触发上传，可能存在账户风险。',
       riskLine3: '请确认你已获得上传授权、已完成必要脱敏，并自行承担合规责任。',
+      noticeConfirmFailed: '配置没写进去，本次未启用。详情看宿主日志。',
+      noticeDisableFailed: '关闭失败：配置没写进去，插件可能仍在运行。请重试或看宿主日志。',
       riskAck: '我已了解风险，并愿意继续',
       riskCancel: '取消',
       riskConfirm: '启用上传',
@@ -290,13 +299,12 @@ window.__ModuleLoader__.load({
     }
 
     function SettingsRow(props) {
-      const { useConfig, setMode, setEnabled, setAcknowledged, t } = props;
+      const { useConfig, setMode, setEnabled, t } = props;
       const snapshot = typeof useConfig === 'function' ? useConfig((value) => value) : null;
       const config = snapshot?.value ?? {};
       const ready = snapshot?.status === 'ready' && snapshot?.writable !== false;
       const enabled = config.enabled === true;
       const mode = typeof config.mode === 'string' ? config.mode : 'deferred';
-      const acknowledged = config.acknowledged === true;
       const [busy, setBusy] = React.useState(false);
       const [notice, setNotice] = React.useState(null);
       const [confirming, setConfirming] = React.useState(false);
@@ -340,14 +348,15 @@ window.__ModuleLoader__.load({
       const canUpload = ready && enabled && manualOnly && !busy;
       const descKey = mode === 'manual' ? 'descManual' : mode === 'realtime' ? 'descRealtime' : 'descDeferred';
 
-      /* 首次开启必须先过风险确认；确认过一次就记在配置里，之后开关直通。 */
-      const requestEnable = (next) => {
+      /* 每次开启都要过风险确认：开关是唯一入口，不记「已经同意过」。 */
+      const requestEnable = async (next) => {
         if (!next) {
-          setEnabled(false);
-          return;
-        }
-        if (acknowledged) {
-          setEnabled(true);
+          // 关闭失败是 fail-open：界面以为停了、实际还在传，所以不能静默。
+          try {
+            await setEnabled(false);
+          } catch {
+            setNotice({ tone: 'error', text: t('noticeDisableFailed') });
+          }
           return;
         }
         setRiskAck(false);
@@ -357,22 +366,31 @@ window.__ModuleLoader__.load({
         setConfirming(false);
         setRiskAck(false);
       };
-      const confirmRisk = () => {
+      /*
+       * 确认只有一次写（enabled: true），单次写本身就是原子的——
+       * 不存在「授权记下了但没启用」这种半截状态。失败就把原因说出来，绝不静默。
+       */
+      const confirmRisk = async () => {
         setConfirming(false);
         setRiskAck(false);
-        setAcknowledged(true);
-        setEnabled(true);
+        try {
+          await setEnabled(true);
+          setNotice(null);
+        } catch {
+          setNotice({ tone: 'error', text: t('noticeConfirmFailed') });
+        }
       };
       const riskLines = [t('riskLine1'), t('riskLine2'), t('riskLine3')];
       const riskButtons = h('div', { className: 'sla-actions' },
         h('button', { type: 'button', className: 'sla-upload', onClick: cancelRisk }, t('riskCancel')),
-        h('button', { type: 'button', className: 'sla-primary', disabled: !riskAck, onClick: confirmRisk }, t('riskConfirm')),
+        h('button', { type: 'button', className: 'sla-primary', disabled: !riskAck || !ready, onClick: confirmRisk }, t('riskConfirm')),
       );
       const riskTicks = h('button', {
         type: 'button',
         role: 'checkbox',
         'aria-checked': riskAck,
         className: 'sla-check',
+        autoFocus: true,
         onClick: () => setRiskAck(!riskAck),
       },
         h('span', { className: 'sla-box', 'aria-checked': riskAck, 'aria-hidden': true }, riskAck ? tick() : null),
@@ -402,7 +420,17 @@ window.__ModuleLoader__.load({
           ),
           // 老核心拿不到官方弹层时，确认就地展开，判定与弹窗完全一致。
           confirming && RiskConfirmation === null
-            ? h('div', { className: 'sla-risk', role: 'alertdialog', 'aria-label': t('riskTitle') },
+            ? h('div', {
+              className: 'sla-risk',
+              role: 'alertdialog',
+              'aria-label': t('riskTitle'),
+              onKeyDown: (event) => {
+                if (event.key === 'Escape') {
+                  event.stopPropagation();
+                  cancelRisk();
+                }
+              },
+            },
               h('div', { className: 'sla-risk-title' }, t('riskTitle')),
               riskLines.map((line, index) => h('div', { key: index, className: 'sla-risk-line' }, line)),
               riskTicks,
@@ -416,7 +444,7 @@ window.__ModuleLoader__.load({
             options,
             disabled: !ready,
             ariaLabel: t('modeLabel'),
-            onChange: (next) => setMode(next),
+            onChange: (next) => swallow(setMode(next)),
           }),
           h(Toggle, {
             checked: enabled,
@@ -434,6 +462,7 @@ window.__ModuleLoader__.load({
           description: h(React.Fragment, null, riskLines.map((line, index) => h(React.Fragment, { key: index }, index > 0 ? h('br') : null, line))),
           acknowledgeLabel: t('riskAck'),
           cancelLabel: t('riskCancel'),
+          disabled: !ready,
           closeLabel: t('close'),
           confirmLabel: t('riskConfirm'),
           acknowledged: riskAck,
@@ -456,9 +485,9 @@ window.__ModuleLoader__.load({
       const form = ctx.configForms.get(namespace);
       const face = () => ({
         hooks: { config: form },
-        setMode: (mode) => { Promise.resolve(form.set('mode', mode)).catch(() => {}); },
-        setEnabled: (enabled) => { Promise.resolve(form.set('enabled', enabled)).catch(() => {}); },
-        setAcknowledged: (value) => { Promise.resolve(form.set('acknowledged', value)).catch(() => {}); },
+        // 返回值原样冒泡：确认流程要 await 才知道写没写进去。
+        setMode: (mode) => form.set('mode', mode),
+        setEnabled: (enabled) => form.set('enabled', enabled),
       });
 
       // 等 Host 把这条 entry 的 Config 服务出来再挂行，避免配置还没就绪时渲染出空控件。

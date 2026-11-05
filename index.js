@@ -27,8 +27,6 @@ export const name = 'dsh-session-log-upload';
  */
 export const Config = z.object({
   enabled: z.boolean().default(false).volatile(),
-  // 用户是否点过「我已了解风险」确认。不 volatile：只在首次开启时写一次，之后长期有效。
-  acknowledged: z.boolean().default(false),
   mode: z.union(['manual', 'deferred', 'realtime']).default('deferred').volatile(),
   apiKeyRef: z.string().default('DEEPSEEK_API_KEY'),
   model: z.string().default('deepseek-flash'),
@@ -90,7 +88,6 @@ const MAX_DRAIN_ROUNDS = 4;
 
 const DEFAULTS = {
   enabled: false,
-  acknowledged: false,
   mode: 'deferred',
   apiKeyRef: 'DEEPSEEK_API_KEY',
   model: 'deepseek-flash',
