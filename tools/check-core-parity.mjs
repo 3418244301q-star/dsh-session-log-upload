@@ -75,10 +75,14 @@ const preamble = [
   'const KNOWN_SESSION_EVENT_TYPES = new Set(' + JSON.stringify(KNOWN.split(' ')) + ');',
   'const SessionLogOffset = (n) => n;',
   'const SessionSeq = (n) => n;',
+  // dsh 0.2.2-rc.1 起核心把上传器改成 Service：构造时调 super(ctx, name) 再注册扩展，
+  // 用最小 Service 基类承接，直接 new 出实例即可捕获 prepare（不必走 ctx.plugin）。
+  'class Service { constructor(ctx, name) { this.ctx = ctx; this.name = name; } }',
 ].join('\n');
 
 src = src
   .replace(/^import z from "@deepseek-ai\/schemastery";$/m, '')
+  .replace(/^import \{ Service \} from "@deepseek-ai\/cordis";$/m, '')
   .replace(/^import \{ brandString \} from "@deepseek-ai\/dsh-brand";$/m, '')
   .replace(/^import \{ KNOWN_SESSION_EVENT_TYPES, SessionLogOffset, SessionSeq \} from "@deepseek-ai\/dsh-session";$/m, '');
 if (/^import .*@deepseek-ai/m.test(src)) {
@@ -122,7 +126,13 @@ let coreThrew = 0;
 const samples = [];
 
 for (const maxBytes of [2000, 8192, 1 << 20, 8 << 20]) {
-  core.apply(ctx, { enabled: { get: () => true }, maxBytes });
+  // 0.2.2-rc.1 起 apply() 只做 ctx.plugin(Service)；这里直接构造实例，效果相同。
+  if (typeof core.SessionLogDeepSeekService === 'function') {
+    prepare = null;
+    new core.SessionLogDeepSeekService(ctx, { enabled: { get: () => true }, maxBytes });
+  } else {
+    core.apply(ctx, { enabled: { get: () => true }, maxBytes });
+  }
   if (!prepare) {
     console.error('prepare not captured');
     process.exit(2);

@@ -105,19 +105,20 @@ node tools/check-client.mjs       # 设置页控件：假 __ModuleLoader__
 
 | 依赖 | 声明 | 说明 |
 |---|---|---|
-| DSH 本体 | `dsh.engines.dsh: ">=0.2.1-rc.3"` | 市场据此做兼容筛选；本机实测 0.2.1-rc.5 |
+| DSH 本体 | `dsh.engines.dsh: ">=0.2.1-rc.3 <0.2.2-0 \|\| >=0.2.2-rc.1"` | 市场据此做兼容筛选；本机实测 0.2.2-rc.1（逐字节对账 220/220 仍全等） |
 | `@deepseek-ai/schemastery` | `^3.18.4` | 用到 `.volatile()`，该 API 3.18.2 才有；旧版会报 `...volatile is not a function` |
 | 客户端注入 | `dsh-client-locale`、`dsh-client-ui-settings` | 宿主缺少时设置行不出现，**且不报错** |
 
 #### 预发布版本的 semver 盲区（每次 DSH 进新预发布都要看一眼）
 
-`engines.dsh` 写的是 `>=0.2.1-rc.3`。node-semver 只有在范围里存在「major.minor.patch 完全相同、
-且自身带预发布标签」的比较符时才放行预发布版本，所以：
+`engines.dsh` 写的是 `>=0.2.1-rc.3 <0.2.2-0 || >=0.2.2-rc.1`（0.2.2-rc.1 起补的第二个分支）。
+node-semver 只有在范围里存在「major.minor.patch 完全相同、且自身带预发布标签」的比较符时才放行
+预发布版本，所以：
 
 | 宿主版本 | 匹配 | 原因 |
 |---|---|---|
 | `0.2.1-rc.5` | ✅ | 范围里有 `0.2.1` tuple 上的预发布比较符 |
-| `0.2.2-rc.1` | ❌ | tuple 变成 `0.2.2`，那个 tuple 上没有预发布比较符 |
+| `0.2.2-rc.1` | ✅ | 第二个分支 `>=0.2.2-rc.1` 正好落在该 tuple 上 |
 | `0.2.2`（正式版） | ✅ | 正式版不受这条规则限制 |
 
 被排除的后果不是报错，而是**从市场的兼容筛选里静默消失**——本机日志、安装界面都不会提示。
@@ -208,7 +209,7 @@ bundle 清单在 `cordis.patch.yml`，默认 `enabled: false`。
 4. 在 GitHub 上为该 tag 建 Release，标题写明**本插件版本与验证过的 DSH 核心版本**：
 
    ```
-   dsh-session-log-upload 1.1.3 · DSH 0.2.1-rc.5
+   dsh-session-log-upload 1.1.4 · DSH 0.2.2-rc.1
    ```
 
    正文直接取 CHANGELOG 对应段落。写清核心版本是有意为之——这个插件依赖若干未公开的内部契约，

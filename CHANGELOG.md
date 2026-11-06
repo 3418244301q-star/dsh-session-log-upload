@@ -6,7 +6,7 @@
 下方早期条目中的旧名与本地路径属于当时的记录，未回改。
 **规格来源**：`D:\dsh\3\SPEC-跨渠道会话日志上传.md`
 **首次实现**：2026-11-04
-**当前版本**：1.1.3
+**当前版本**：1.1.4
 
 ---
 
@@ -44,7 +44,8 @@
 | 1.1.0 | 11-05 12:20 | 首次开启加风险确认（1.1.2 起改为每次询问）：复用官方 `RiskConfirmation` |
 | 1.1.1 | 11-05 12:40 | 复审修复：确认改成可失败的串联写、补 `disabled` 门禁、空语料不再判绿 |
 | 1.1.2 | 11-05 12:52 | 确认改成「每次启用都问」：只剩一次写，`acknowledged` 键删除；关闭失败不再静默 |
-| **1.1.3** | 11-05 19:55 | 启用前检测 API key：没有就不许启用，并在设置行常驻提醒 |
+| 1.1.3 | 11-05 19:55 | 启用前检测 API key：没有就不许启用，并在设置行常驻提醒 |
+| **1.1.4** | 11-06 18:55 | 适配 DSH 0.2.2-rc.1：补 `engines` 的 0.2.2 tuple、核心对账脚本适配 Service 重构 |
 
 ---
 
@@ -904,6 +905,41 @@ client **56/56**（确认只写一个键、再开一次还会问、关不弹、�
 `check-docs` 通过。
 
 ---
+
+## 1.1.4 — 适配 DSH 0.2.2-rc.1
+
+宿主从 `0.2.1-rc.5` 升到 `0.2.2-rc.1`，兼容性逐项核过：
+
+### 结论
+
+| 项 | 结果 |
+|---|---|
+| 线格式（envelope / wireHeader / wireEvent / 分段记账） | 逐字节全等，55 个会话 × 4 档 maxBytes = 220/220 |
+| 宿主 API（sessions / credentials / webServer / `session/event`） | 全部仍在，状态路由实测返回 `{"ok":true,"hasKey":true}` |
+| 客户端契约（`settings.general.item` / `configForms` / `RiskConfirmation`） | 字符串全在，无改名 |
+| `engines.dsh` 范围 | **不匹配**，已修（见下） |
+
+### 修
+
+- **`engines.dsh` 漏掉 0.2.2 tuple**：`>=0.2.1-rc.3` 不匹配 `0.2.2-rc.1`
+  （node-semver 只放行范围里有同 tuple 预发布比较符的版本）。后果是市场兼容筛选里静默消失，
+  不报错。改为 `>=0.2.1-rc.3 <0.2.2-0 || >=0.2.2-rc.1`，三种版本实测：
+  `0.2.1-rc.5` ✅、`0.2.2-rc.1` ✅、`0.2.2` ✅，`0.2.3-rc.1` 仍为 ❌（下一档还要再补）。
+- **`tools/check-core-parity.mjs` 适配核心重构**：0.2.2-rc.1 把内置上传器改成了 Cordis
+  `Service`（`sessionLogDeepSeek`），`apply()` 只剩 `ctx.plugin(Service)`，并新增一行
+  `import { Service } from "@deepseek-ai/cordis"`。抽出 `Service` 的最小替身后改为直接
+  `new core.SessionLogDeepSeekService(ctx, cfg)` 捕获 `prepare`；旧分支保留，两个核心版本都能跑。
+
+### 记
+
+- 核心 `acceptedThrough` 现在**会抛**：缺事件、格式版本非法、`throughSeq >= 事件自身 seq`
+  都直接 `throw`。本插件写的水印满足这三条（`throughSeq < 新事件 seq` 恒成立），
+  但它的**读**侧仍是宽容的（跳过非法项而不是抛）。这处不对称是有意的：内置那侧崩了不该
+  连累本插件，反之亦然。
+- 0.2.2-rc.1 新增 `sessionLogDeepSeek.registerExclusion(predicate)`：官方给外部插件留了
+  「让内置上传器跳过这条」的正式口子。本插件暂时不用——现有的「非官方段自己发、遇官方
+  header 即停」已经避免重叠，而接上 exclusion 在「本插件连传失败 + 用户切回官方 API」时
+  反而会让这段内容谁都传不出去。留作后续可选项。
 
 ## 1.1.3 — 启用前检测有没有 API key
 
