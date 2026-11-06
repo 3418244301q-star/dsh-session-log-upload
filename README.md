@@ -238,8 +238,10 @@ bundle 清单在 `cordis.patch.yml`，默认 `enabled: false`。
    git push origin vX.Y.Z
    ```
 
-   （或者让 CI 代劳：`.github/workflows/publish.yml` 在 `v*` 标签上走 Trusted Publishing
-   发布到 npm 并附 provenance，不依赖任何本地凭证。）
+   （**或者整步交给 CI**：`.github/workflows/publish.yml` 在 `v*` 标签上完成
+   版本守卫 → 打包守卫 → npm 发布（Trusted Publishing + provenance）→ 建 Release。
+   正文由 `tools/release-notes.mjs` 从 CHANGELOG 抽出，标题里的核心版本读
+   `package.json` 的 `dsh.verifiedCoreVersion`，两步都不靠人抄。发版只需要打 tag。）
 
 4. 在 GitHub 上为该 tag 建 Release，标题写明**本插件版本与验证过的 DSH 核心版本**：
 

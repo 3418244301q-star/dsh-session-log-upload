@@ -6,7 +6,7 @@
 下方早期条目中的旧名与本地路径属于当时的记录，未回改。
 **规格来源**：`D:\dsh\3\SPEC-跨渠道会话日志上传.md`
 **首次实现**：2026-11-04
-**当前版本**：1.1.6
+**当前版本**：1.1.7
 
 ---
 
@@ -47,7 +47,8 @@
 | 1.1.3 | 11-05 19:55 | 启用前检测 API key：没有就不许启用，并在设置行常驻提醒 |
 | 1.1.4 | 11-06 19:10 | 适配 DSH 0.2.2-rc.1（补 `engines` 的 0.2.2 tuple、对账适配 Service 重构）+ 三条观察项落地（打印 `branch`、`engines` 可断言、契约核对方法写进 README） |
 | 1.1.5 | 11-06 20:05 | 收录准备：位图图标（180/512 PNG）、`schemastery` 改为 `peerDependencies` |
-| **1.1.6** | 11-06 20:50 | 发布上 npm + CI 自动发版（Trusted Publishing / provenance） |
+| 1.1.6 | 11-06 20:50 | 发布上 npm + CI 自动发版（Trusted Publishing / provenance） |
+| **1.1.7** | 11-06 21:10 | CI 顺手建 Release：正文从 CHANGELOG 抽、标题里的核心版本可核 |
 
 ---
 
@@ -908,6 +909,47 @@ client **56/56**（确认只写一个键、再开一次还会问、关不弹、�
 
 ---
 
+## 1.1.7 — CI 顺手建 Release
+
+发版从「打 tag + 手工建 Release」两段，收成一段：**打 tag 是唯一的发布动作**。
+
+### 正文不再手工复制
+
+新增 `tools/release-notes.mjs`：从 `CHANGELOG.md` 抽出当前版本那一段，直接当 Release 正文。
+之前是人工复制，问题不是慢，是**不同源**——CHANGELOG 改了、Release 忘了同步，两边说法不一致
+且没人会发现。脚本找不到该版本段落时**直接失败**，不会降级成空正文（空正文的 Release
+比没有更糟：看起来像发过了）。
+
+### 标题里的核心版本变成可核事实
+
+Release 标题一直带「验证过的 DSH 核心版本」。之前那个值写在命令里，靠人记得改。
+现在它进了 `package.json`：
+
+```json
+"dsh": { "verifiedCoreVersion": "0.2.2-rc.1" }
+```
+
+`tools/check-compat.mjs` 新增第 9 条断言：**这个字段必须等于装机核心版本**。核心升级后
+不更新它，本地校验就红——把「标题写错核心版本」这件事变成不可能发生。
+
+### 权限拆开
+
+发布 npm 需要 `id-token: write`，建 Release 需要 `contents: write`。原先想塞进一个 job，
+等于让「能发 npm 包」的身份同时拥有「能改仓库内容」。现在是两个 job：
+
+| job | 权限 | 做什么 |
+|---|---|---|
+| `publish` | `contents: read` + `id-token: write` | 版本守卫 → 打包守卫 → `npm publish --provenance` → 打 tgz 上传为 artifact |
+| `release` | `contents: write` | 下载 artifact → `release-notes.mjs` → `gh release create` |
+
+顺序天然正确：npm 发布失败就不会走到建 Release。
+
+### 预发布与幂等
+
+- 版本里带 `-` 就 `npm publish --tag next` + `gh release create --prerelease`，
+  否则 `--tag latest`。判定基于版本字符串，不靠人记得。
+- Release 已存在时 `gh release view` 通过、跳过创建，重跑 workflow 不会 409。
+
 ## 1.1.6 — 发布到 npm 与 CI 发版
 
 代码逻辑没动。这版把「发出去」这条路修成可持续的。
@@ -1128,7 +1170,7 @@ parity 220/220、envelope 55 会话 0 差异、`check-docs` 通过。
 | `tools/check-runtime.mjs` | mock fetch + mock ctx 跑 Host 行为（结果码、并发、重试、卸载、状态端点） | **57/57** |
 | `tools/check-client.mjs` | 假 `__ModuleLoader__` 里跑设置页控件：结果提示、每次开启的确认、写失败、无 key 提醒 | **63/63** |
 | `tools/check-package.mjs` | 跑 `npm pack --dry-run`，核 `files` 有没有漏掉对外产物（位图）、有没有混入内部文件 | **12/12** |
-| `tools/check-compat.mjs` | 拿装机核心核 `engines.dsh` 是否真匹配、客户端契约串是否还在（并报归属包） | **8/8** |
+| `tools/check-compat.mjs` | 拿装机核心核 `engines.dsh`、声明的 `verifiedCoreVersion`、客户端契约串（并报归属包） | **10/10** |
 | `tools/check-envelope.mjs` | 分段/水位的回归护栏（与 `tools/reference/` 比对，读真实日志） | 55 会话，0 差异；0 会话时 exit 2 |
 | `tools/check-version.mjs` | `package.json`、CHANGELOG 抬头与总表、git 标签三处是否同一版本 | **5/5** |
 | `tools/check-docs.mjs` | 跑上面七个套件，与上面这张表比对数字 | 文档数字与实测一致 |

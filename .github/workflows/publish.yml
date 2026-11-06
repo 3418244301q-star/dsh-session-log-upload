@@ -1,10 +1,9 @@
 name: publish
 
-# 打 v* 标签即发布到 npm。
+# 打 v* 标签即完成一次发版：发 npm + 建 GitHub Release。
 #
-# 认证走 **Trusted Publishing（OIDC）**：不存任何 token，npm 用工作流签发的
-# 短期身份核验「确实是这个仓库的这个工作流」、以及它跑在哪个提交上，并生成
-# provenance 签名（npm 页面上会显示「由该仓库的该提交构建」）。
+# 认证走 **Trusted Publishing（OIDC）**：不存任何 token，npm 用工作流签发的短期身份
+# 核验「确实是这个仓库的这个工作流、跑在这个提交上」，并生成 provenance 签名。
 #
 # 前置（一次性，在 npmjs.com 上做）：
 #   Package → Settings → Trusted Publisher → GitHub Actions
@@ -12,21 +11,25 @@ name: publish
 #     Repository:           dsh-session-log-upload
 #     Workflow filename:    publish.yml
 #     Environment:          （留空）
-#
-# 本地发布（npm publish）仍可用，两者互不影响。
+#   并在 Allowed actions 里勾上 `npm publish`（不勾则只能暂存，需人工批准）。
 
 on:
   push:
     tags:
       - 'v*'
 
-permissions:
-  contents: read
-  id-token: write # provenance / Trusted Publishing 必需
-
 jobs:
+  # ── 发 npm ──
+  # 只要 id-token（发布身份）+ 读仓库；没有写仓库的权限。
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      title: ${{ steps.meta.outputs.title }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,18 +41,92 @@ jobs:
       # Trusted Publishing 需要较新的 npm。
       - run: npm install -g npm@11
 
-      # 依赖只在校验脚本里用得到（schemastery 是 peer）；装一次即可。
+      # 校验脚本要解析 schemastery（peer），装一次即可。
       - run: npm ci --omit=optional || npm install --no-audit --no-fund
 
-      # 版本三处一致（package.json / CHANGELOG / 本次 tag）。
+      # 版本三处一致 + 声明的方式与 tag 同名；对不上就不发。
       - name: 版本守卫
         run: node tools/check-version.mjs
 
-      # 包里该带的都带了（尤其是 assets/ 下的位图），内部文件没混进来。
+      # 包里该带的都带了（尤其 assets/ 下的位图），内部文件没混进来。
       - name: 打包守卫
         run: node tools/check-package.mjs
 
-      - name: 发布
-        run: npm publish --provenance --access public
+      # 版本与标题都从仓库里的真实值算出来，不靠人记得改。
+      - name: 判定版本与发布通道
+        id: meta
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          declared_version="$(node -p "require('./package.json').version")"
+          if [ "$version" != "$declared_version" ]; then
+            echo "tag $GITHUB_REF_NAME 与 package.json 的 $declared_version 不一致" >&2
+            exit 1
+          fi
+          title="$(node tools/release-notes.mjs --title)"
+          case "$version" in
+            *-*) npm_tag=next; prerelease=true ;;
+            *)   npm_tag=latest; prerelease=false ;;
+          esac
+          {
+            echo "version=$version"
+            echo "title=$title"
+            echo "npm_tag=$npm_tag"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 发布到 npm
+        run: npm publish --provenance --access public --tag "${{ steps.meta.outputs.npm_tag }}"
         env:
           NPM_CONFIG_PROVENANCE: 'true'
+
+      # 附件用与 npm 完全同一份打包结果，交给 release job。
+      - name: 打包并生成校验和
+        run: |
+          set -euo pipefail
+          npm pack
+          sha256sum dsh-session-log-upload-*.tgz > "SHA256SUMS-${{ steps.meta.outputs.version }}.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: |
+            dsh-session-log-upload-*.tgz
+            SHA256SUMS-*.txt
+          retention-days: 7
+
+  # ── 建 Release ──
+  # 只有这一层能写仓库；排在上一步之后，npm 发布失败就不会建出「装不到」的 Release。
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+
+      - name: 生成 Release 正文
+        run: node tools/release-notes.mjs > notes.md
+
+      - name: 建 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME 已存在，跳过（重跑是幂等的）"
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "${{ needs.publish.outputs.title }}" \
+            --notes-file notes.md \
+            ${{ needs.publish.outputs.prerelease == 'true' && '--prerelease' || '' }} \
+            dsh-session-log-upload-*.tgz SHA256SUMS-*.txt

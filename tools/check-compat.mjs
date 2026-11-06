@@ -99,6 +99,7 @@ if (semver === null) {
 }
 
 let bad = 0;
+let checks_declared = false;
 
 /* ── 1. engines.dsh 对装机核心 ── */
 const matches = semver.satisfies(coreVersion, range, { includePrerelease: false });
@@ -112,6 +113,20 @@ if (!matches) {
   console.error(`      修: 给 ${tuple} 这个 tuple 补一个预发布比较符，例如`);
   console.error(`          ">=0.2.1-rc.3 <${next}-0 || >=${tuple}-rc.1"`);
   console.error(`      并顺手把 README「预发布版本的 semver 盲区」表的当前行改对。`);
+}
+
+/* ── 1b. 记录在案的核心版本必须等于装机核心（Release 标题就写它） ── */
+const declared = pkg.dsh?.verifiedCoreVersion;
+if (typeof declared !== 'string' || declared.length === 0) {
+  bad += 1;
+  console.error('FAIL  package.json 缺 dsh.verifiedCoreVersion');
+  console.error('      这个字段同时决定 Release 标题里的「验证过的核心版本」，不能靠记忆。');
+} else if (declared !== coreVersion) {
+  bad += 1;
+  console.error(`FAIL  dsh.verifiedCoreVersion=${declared} 与装机核心 ${coreVersion} 不一致`);
+  console.error('      核心升级后要重跑套件，然后把这两处一起改：package.json 的这个字段、README「本机实测」。');
+} else {
+  checks_declared = true;
 }
 
 /* ── 2. 契约串 ── */
@@ -143,5 +158,6 @@ if (missing.length > 0) {
 }
 
 console.log(`engines           ${coreVersion} ${matches ? '匹配' : '不匹配'} ${range}`);
-console.log(`compat            ${contractsOk}/${CONTRACTS.length} passed`);
+console.log(`core version      声明 ${declared ?? '(缺失)'} · 装机 ${coreVersion} ${checks_declared ? '一致' : '不一致'}`);
+console.log(`compat            ${contractsOk + (matches ? 1 : 0) + (checks_declared ? 1 : 0)}/${CONTRACTS.length + 2} passed`);
 process.exit(bad === 0 ? 0 : 1);
