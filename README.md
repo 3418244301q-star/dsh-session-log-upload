@@ -85,6 +85,7 @@
 ## 自检
 
 ```bash
+node tools/check-package.mjs      # 打包完整性：files 有没有漏掉对外产物（如 assets/ 下的位图）
 node tools/check-compat.mjs       # 兼容性守卫：engines 是否真匹配装机核心 + 客户端契约串是否还在
 node tools/check-core-parity.mjs  # 与核心包逐字节对账（从 app.asar 提取真实现，55 会话 × 4 档）
 node tools/check-envelope.mjs     # 分段/水位的回归护栏（与 tools/reference 比对，读真实日志）
@@ -111,6 +112,8 @@ node tools/check-docs.mjs         # 上面六个全跑一遍，并与 CHANGELOG 
   运行时分发的客户端插件包（`dsh-client-ui-settings-general` 等）里，
   `dsh-web-frontend` 的 shell bundle 里搜不到。只扫 shell 会得到假阴性。
   `check-compat.mjs` 的输出现已按所属包聚合打印，直接对着看。
+- `tools/check-package.mjs` 堵的是「仓库里有、包里没有」：`files` 漏了 `assets/`，
+  `npm pack --dry-run` 里 png 命中 0，而市场取图有一条路正是从包里取的。
 - `tools/envelope.mjs` 那份参考实现只能挡重构回归，不能证明与核心一致。
 
 `tools/reference/` 是用于回归比对的独立参考实现，不参与运行。
@@ -121,7 +124,7 @@ node tools/check-docs.mjs         # 上面六个全跑一遍，并与 CHANGELOG 
 | 依赖 | 声明 | 说明 |
 |---|---|---|
 | DSH 本体 | `dsh.engines.dsh: ">=0.2.1-rc.3 <0.2.2-0 \|\| >=0.2.2-rc.1"` | 市场据此做兼容筛选；本机实测 0.2.2-rc.1（逐字节对账 220/220 仍全等） |
-| `@deepseek-ai/schemastery` | `peerDependencies: ^3.18.4` | 官方包按惯例声明为 peer（避免消费者装出第二份）；用到 `.volatile()`，该 API 3.18.2 才有，旧版会报 `...volatile is not a function`。仓库里同时列进 `devDependencies`，本地跑测试才有得解析 |
+| `@deepseek-ai/schemastery` | `peerDependencies: ^3.18.4`（仓库里另列 `devDependencies`） | 官方包按惯例声明为 peer（避免消费者装出第二份）；用到 `.volatile()`，该 API 3.18.2 才有，旧版会报 `...volatile is not a function`。**代价**：`index.js` 顶部是静态 `import`，peer 不满足时插件不是降级，而是**整个不加载**（见下节） |
 | 客户端注入 | `dsh-client-locale`、`dsh-client-ui-settings` | 宿主缺少时设置行不出现，**且不报错** |
 
 #### 预发布版本的 semver 盲区（每次 DSH 进新预发布都要看一眼）
@@ -179,6 +182,7 @@ node-semver 只有在范围里存在「major.minor.patch 完全相同、且自�
 | 会话已经不活跃 | 启动扫描只覆盖活着的会话——非活会话没有 `Session` 对象，无法 `session.append()` 落水位 | 重新打开该会话，或等它被恢复 |
 | 「仅手动」档连续点击 | 每次最多发 8 段（`MAX_SEGMENTS_PER_RUN`） | 多点几次，界面会告诉你还剩多少条 |
 | 用户关掉了内置上传开关 | 官方窗口的日志不会上传——本插件不接管那一段 | 打开内置开关 |
+| 宿主提供的 `@deepseek-ai/schemastery` 不满足 `^3.18.4`，或被 `--legacy-peer-deps` 跳过 | 插件**整个不加载**（不是降级）：`index.js` 顶部是静态 `import`，失败点在模块解析，不在读配置 | 让宿主与插件同版本线；`engines.dsh` 已经把宿主钳在提供 3.18+ 的区间内。升级核心后跑 `node tools/check-docs.mjs` |
 
 另外，本插件和内置插件一样**无法证明服务端真的入库**：2xx 是唯一的信号。
 

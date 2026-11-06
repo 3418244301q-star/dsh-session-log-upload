@@ -915,11 +915,25 @@ client **56/56**（确认只写一个键、再开一次还会问、关不弹、�
 
 原来的 `icon.svg` 是给仓库和 README 用的；市场卡片要的是**位图**。新增：
 
-- `assets/icon-180.png`（180×180，4.0 KB）——市场卡片的推荐尺寸
+- `assets/icon-180.png`（180×180，4.0 KB）——市场卡片用（48px 卡片约 3.75×）
 - `assets/icon-512.png`（512×512，26 KB）——大图/桌面图标备用
 
 两张都由 `icon.svg` 直接光栅化得到（`sharp`，density 384 后缩放），线条与圆角保持原样，
 没有另画一版。
+
+尺寸依据：市场卡片的图标 CSS 是 48×48（`height:48px;width:48px`），180 提供约 3.75×
+的像素密度，够高 DPR 屏；512 留给大图与桌面。不写「推荐尺寸」这种无据的说法。
+
+### 复审修复（F16/F17/F20）
+
+- **F16 `assets/` 没进 npm 包**：`files` 列了 20 个文件却没有 `assets/`，`npm pack --dry-run`
+  里 png 命中 0。市场取图有两条路，npm CDN 那条正是从包里取的——仓库有、包里没有，等于白做。
+  已加 `"assets/"`，现在包里 23 个文件、2 张 png。
+- **F17 `exports` 没给位图开口**：补 `"./assets/*": "./assets/*"`，否则走 `exports` 解析的消费方
+  拿不到（裸拼 URL 才行）。
+- **F20 工具链不问 `files` 完整性**：新增 `tools/check-package.mjs`，跑 `npm pack --dry-run --json`
+  核三件事——必带文件齐不齐、`assets/` 下有没有 png、内部文件有没有混进来；顺带比对包内版本号。
+  已接进 `check-docs.mjs`（12/12）。
 
 ### `@deepseek-ai/schemastery` 改为 `peerDependencies`
 
@@ -928,6 +942,11 @@ client **56/56**（确认只写一个键、再开一次还会问、关不弹、�
 由宿主提供。仓库里同时列进 `devDependencies`，否则本地跑 `tools/check-*.mjs` 解析不到。
 
 这也是 awesome 列表的推荐项（不是收录门槛）：官方 `@deepseek-ai/*` 包用 peer 声明。
+
+**代价要写清楚（F19）**：`index.js` 顶部是静态 `import z from '@deepseek-ai/schemastery'`，
+peer 不满足时失败点不在读配置，而在**模块解析**——插件不会降级运行，而是整个不加载。
+换掉的另一半风险是：留在 `dependencies` 里会落第二份 `z`，两个实例让 `Config` 的实例判断失效。
+两害相权选前者，并且 `engines.dsh` 已经把宿主钳在提供 3.18+ 的区间内。
 
 ## 1.1.4 — 适配 DSH 0.2.2-rc.1
 
@@ -1080,10 +1099,11 @@ parity 220/220、envelope 55 会话 0 差异、`check-docs` 通过。
 | `tools/check-core-parity.mjs` | 从 `app.asar` 取出核心包原样跑，与本插件逐字节对账 | **55 会话 × 4 档 = 220/220**，0 错误 |
 | `tools/check-runtime.mjs` | mock fetch + mock ctx 跑 Host 行为（结果码、并发、重试、卸载、状态端点） | **57/57** |
 | `tools/check-client.mjs` | 假 `__ModuleLoader__` 里跑设置页控件：结果提示、每次开启的确认、写失败、无 key 提醒 | **63/63** |
+| `tools/check-package.mjs` | 跑 `npm pack --dry-run`，核 `files` 有没有漏掉对外产物（位图）、有没有混入内部文件 | **12/12** |
 | `tools/check-compat.mjs` | 拿装机核心核 `engines.dsh` 是否真匹配、客户端契约串是否还在（并报归属包） | **8/8** |
 | `tools/check-envelope.mjs` | 分段/水位的回归护栏（与 `tools/reference/` 比对，读真实日志） | 55 会话，0 差异；0 会话时 exit 2 |
 | `tools/check-version.mjs` | `package.json`、CHANGELOG 抬头与总表、git 标签三处是否同一版本 | **5/5** |
-| `tools/check-docs.mjs` | 跑上面六个套件，与上面这张表比对数字 | 文档数字与实测一致 |
+| `tools/check-docs.mjs` | 跑上面七个套件，与上面这张表比对数字 | 文档数字与实测一致 |
 
 > `node tools/check-docs.mjs` 会跑一遍套件（含版本守卫）并与本表比对。它盯的是**能被我改错的部分**：
 > runtime / client 的断言条数、parity 与 envelope 的内部一致性（会话数 × 档数 = 比对组数）以及
@@ -1093,6 +1113,7 @@ parity 220/220、envelope 55 会话 0 差异、`check-docs` 通过。
 复跑（在仓库根目录）：
 
 ```bash
+node tools/check-package.mjs       # 打包完整性：files 是否带上了 assets/、有没有混入内部文件
 node tools/check-compat.mjs        # 需要 app.asar 与 semver；位置不同用 DSH_ASAR / DSH_SEMVER 指定
 node tools/check-core-parity.mjs   # 需要 app.asar；位置不同用 DSH_ASAR 指定
 node tools/check-runtime.mjs

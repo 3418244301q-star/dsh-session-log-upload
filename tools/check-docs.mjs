@@ -71,6 +71,16 @@ const SUITES = [
     },
   },
   {
+    name: 'check-package.mjs',
+    row: /check-package\.mjs/,
+    parse: (out) => Number(out.match(/package\s+(\d+)\/\d+ passed/)?.[1] ?? NaN),
+    expect: (row, actual) => {
+      const m = row.match(/\*\*(\d+)\/\d+\*\*/);
+      if (!m) return ['cannot parse the package row'];
+      return Number(m[1]) === actual ? [] : [`package ${m[1]} != ${actual}`];
+    },
+  },
+  {
     name: 'check-compat.mjs',
     row: /check-compat\.mjs/,
     parse: (out) => Number(out.match(/compat\s+(\d+)\/\d+ passed/)?.[1] ?? NaN),
