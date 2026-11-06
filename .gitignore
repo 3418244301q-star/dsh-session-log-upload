@@ -4,3 +4,4 @@ node_modules/
 Thumbs.db
 *.tgz
 SHA256SUMS-*.txt
+AGENTS.md

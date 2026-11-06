@@ -107,6 +107,23 @@ const table = text.slice(tableStart, text.indexOf('\n## ', tableStart + 10) > 0
   : text.length);
 
 let bad = 0;
+
+/* ── 发布边界：内部文件不能进公开仓库（AGENTS.md「发布边界」） ── */
+if (!noRun) {
+  try {
+    const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).split('\n');
+    const leaked = tracked.filter((file) => /^(AGENTS\.md|AUDIT.*\.md)$/i.test(file) || /(^|\/)logs?\//.test(file));
+    if (leaked.length > 0) {
+      console.error(`FAIL  内部文件被跟踪了：${leaked.join(', ')}`);
+      console.error('      见 AGENTS.md「发布边界」；本地文件保留，从索引里移除：git rm --cached <file>');
+      bad += 1;
+    } else {
+      console.log('PASS  发布边界  内部文件未被跟踪');
+    }
+  } catch {
+    /* 不在 git 工作副本里（例如从 tarball 解出来），跳过 */
+  }
+}
 for (const suite of SUITES) {
   const row = table.split('\n').find((line) => suite.row.test(line) && line.includes('|'));
   if (row === undefined) {

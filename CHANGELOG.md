@@ -6,7 +6,7 @@
 下方早期条目中的旧名与本地路径属于当时的记录，未回改。
 **规格来源**：`D:\dsh\3\SPEC-跨渠道会话日志上传.md`
 **首次实现**：2026-11-04
-**当前版本**：1.1.5
+**当前版本**：1.1.4
 
 ---
 
@@ -45,8 +45,7 @@
 | 1.1.1 | 11-05 12:40 | 复审修复：确认改成可失败的串联写、补 `disabled` 门禁、空语料不再判绿 |
 | 1.1.2 | 11-05 12:52 | 确认改成「每次启用都问」：只剩一次写，`acknowledged` 键删除；关闭失败不再静默 |
 | 1.1.3 | 11-05 19:55 | 启用前检测 API key：没有就不许启用，并在设置行常驻提醒 |
-| 1.1.4 | 11-06 18:55 | 适配 DSH 0.2.2-rc.1：补 `engines` 的 0.2.2 tuple、核心对账脚本适配 Service 重构 |
-| **1.1.5** | 11-06 19:10 | 三个观察项落地：对账打印 `branch`、`engines` 变成可断言、契约核对方法写进 README |
+| **1.1.4** | 11-06 19:10 | 适配 DSH 0.2.2-rc.1（补 `engines` 的 0.2.2 tuple、对账适配 Service 重构）+ 三条观察项落地（打印 `branch`、`engines` 可断言、契约核对方法写进 README） |
 
 ---
 
@@ -907,43 +906,6 @@ client **56/56**（确认只写一个键、再开一次还会问、关不弹、�
 
 ---
 
-## 1.1.5 — 三个观察项（F13/F14/F15）
-
-代码本体没动，动的是「下次复审能不能少踩坑」。
-
-### F13 对账脚本报出自己走哪条分支
-
-`check-core-parity.mjs` 优先用 `SessionLogDeepSeekService`，否则回落 `core.apply`。
-以前摘要只有 sessions/comparisons/errors/mismatches，看不出测的是哪条链路——核心再改名，
-回落会安静地换成另一条路，而数字照样全绿。现在多两行：
-
-```
-core version        0.2.2-rc.1
-branch              service
-```
-
-顺手复用新抽出的 `tools/asar.mjs`，脚本里那份 asar 解析删掉了（同一段逻辑原来抄了两份）。
-
-### F14 `engines.dsh` 从「人肉记得」变成「机器断言」
-
-新增 `tools/check-compat.mjs`：读装机核心版本（`dsh/node_modules/@deepseek-ai/dsh/package.json`），
-用**真的 semver** 对 `engines.dsh` 求一次 `satisfies`，不匹配就 exit 1 并直接给出该补的 tuple。
-不自己写近似实现——预发布 tuple 规则正是 1.1.4 那个 bug 的成因。
-找不到 semver 时 **exit 2**（`ENGINES-NOT-RUN`），不静默当绿。
-
-### F15 客户端契约的核对方法写进 README 并变成可复现
-
-同一个脚本把 8 个契约串扫一遍，输出**按所属包聚合**的命中：
-
-| 契约串 | 典型归属 |
-|---|---|
-| `settings.general.item`、`configForms` | 客户端插件包（`dsh-client-ui-settings-general` 等） |
-| `RiskConfirmation` | `dsh-client-ui-permission-presets` 等 + shell bundle |
-| `dsh_session_log`、`deepseekLlmApiExtensions` | `dsh-session-log-deepseek`、`dsh-deepseek-llm-api-extensions` |
-
-这一步就是为了防「只扫 shell bundle → 假阴性」重演。`check-docs.mjs` 已把新脚本纳入，
-CHANGELOG 的「验证工具一览」也加了 `check-compat.mjs` 这一行（`8/8`）。
-
 ## 1.1.4 — 适配 DSH 0.2.2-rc.1
 
 宿主从 `0.2.1-rc.5` 升到 `0.2.2-rc.1`，兼容性逐项核过：
@@ -978,6 +940,52 @@ CHANGELOG 的「验证工具一览」也加了 `check-compat.mjs` 这一行（`8
   「让内置上传器跳过这条」的正式口子。本插件暂时不用——现有的「非官方段自己发、遇官方
   header 即停」已经避免重叠，而接上 exclusion 在「本插件连传失败 + 用户切回官方 API」时
   反而会让这段内容谁都传不出去。留作后续可选项。
+
+### 约定：先推送，再升号
+
+新增 `AGENTS.md`，把版本号规则写死：**版本号代表一次对外发布，不是一次提交**。上一个公开版本是
+`1.1.3`，所以本地升到 `1.1.4` 合理；但 `1.1.4` 没推送之前的所有改动（这次的适配 + 三条观察项）
+都继续叫 `1.1.4`，不再往上加。本段内容就是从冲突的 `1.1.5` 折回来的。
+
+### 同版观察项（F13/F14/F15）
+
+同一次核对里复审提了三条观察级意见，一并落在这里——都是「让下次复审更省事」的性质。版本号没有因此
+再往上加：`1.1.4` 还没发布，未发布的改动都属于同一个待发布版本（见 `AGENTS.md`）。
+
+代码本体没动，动的是「下次复审能不能少踩坑」。
+
+#### F13 对账脚本报出自己走哪条分支
+
+`check-core-parity.mjs` 优先用 `SessionLogDeepSeekService`，否则回落 `core.apply`。
+以前摘要只有 sessions/comparisons/errors/mismatches，看不出测的是哪条链路——核心再改名，
+回落会安静地换成另一条路，而数字照样全绿。现在多两行：
+
+```
+core version        0.2.2-rc.1
+branch              service
+```
+
+顺手复用新抽出的 `tools/asar.mjs`，脚本里那份 asar 解析删掉了（同一段逻辑原来抄了两份）。
+
+#### F14 `engines.dsh` 从「人肉记得」变成「机器断言」
+
+新增 `tools/check-compat.mjs`：读装机核心版本（`dsh/node_modules/@deepseek-ai/dsh/package.json`），
+用**真的 semver** 对 `engines.dsh` 求一次 `satisfies`，不匹配就 exit 1 并直接给出该补的 tuple。
+不自己写近似实现——预发布 tuple 规则正是 1.1.4 那个 bug 的成因。
+找不到 semver 时 **exit 2**（`ENGINES-NOT-RUN`），不静默当绿。
+
+#### F15 客户端契约的核对方法写进 README 并变成可复现
+
+同一个脚本把 8 个契约串扫一遍，输出**按所属包聚合**的命中：
+
+| 契约串 | 典型归属 |
+|---|---|
+| `settings.general.item`、`configForms` | 客户端插件包（`dsh-client-ui-settings-general` 等） |
+| `RiskConfirmation` | `dsh-client-ui-permission-presets` 等 + shell bundle |
+| `dsh_session_log`、`deepseekLlmApiExtensions` | `dsh-session-log-deepseek`、`dsh-deepseek-llm-api-extensions` |
+
+这一步就是为了防「只扫 shell bundle → 假阴性」重演。`check-docs.mjs` 已把新脚本纳入，
+CHANGELOG 的「验证工具一览」也加了 `check-compat.mjs` 这一行（`8/8`）。
 
 ## 1.1.3 — 启用前检测有没有 API key
 

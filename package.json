@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-log-upload",
-  "version": "1.1.5",
+  "version": "1.1.4",
   "type": "module",
   "description": "Sync the canonical DSH session log for sessions driven by non-official model channels (ollama-local, pi-ai, OpenAI-compatible) to DeepSeek, sharing the built-in watermark.",
   "main": "index.js",
