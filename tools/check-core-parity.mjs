@@ -17,50 +17,24 @@
  */
 import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { openAsar } from './asar.mjs';
 import os from 'node:os';
 import path from 'node:path';
 
-const ASAR = process.env.DSH_ASAR ?? path.join(
-  process.env.LOCALAPPDATA ?? '',
-  'Programs/DeepSeek Harness/resources/app.asar',
-);
 const PLUGIN = new URL('../index.js', import.meta.url).href;
 const STORE = new URL('./reference/store.mjs', import.meta.url).href;
 
-if (!fs.existsSync(ASAR)) {
-  console.error(`找不到 app.asar：${ASAR}
-用 DSH_ASAR 环境变量指定 DSH 安装目录下的 app.asar。`);
+let asar;
+try {
+  asar = openAsar();
+} catch (error) {
+  console.error(String(error.message ?? error));
   process.exit(2);
 }
+/** 装机核心包版本：也报出来，省得靠猜「这份 asar 是哪个版本」。 */
+const coreVersion = asar.version('dsh/node_modules/@deepseek-ai/dsh/package.json');
 
-const fd = fs.openSync(ASAR, 'r');
-const sb = Buffer.alloc(8);
-fs.readSync(fd, sb, 0, 8, 0);
-const size = sb.readUInt32LE(4);
-const hb = Buffer.alloc(size);
-fs.readSync(fd, hb, 0, size, 8);
-const header = JSON.parse(hb.toString('utf8', 8, 8 + hb.readUInt32LE(4)));
-const dataOffset = 8 + size;
-
-function walk(node, prefix, out) {
-  for (const [name, info] of Object.entries(node.files ?? {})) {
-    const p = prefix ? prefix + '/' + name : name;
-    if (info.files) walk(info, p, out);
-    else if (info.offset !== undefined) out.set(p, { offset: Number(info.offset), size: Number(info.size) });
-  }
-}
-const entries = new Map();
-walk(header, '', entries);
-
-function readAsar(path) {
-  const e = entries.get(path);
-  if (!e) return null;
-  const b = Buffer.alloc(e.size);
-  fs.readSync(fd, b, 0, e.size, dataOffset + e.offset);
-  return b.toString('utf8');
-}
-
-let src = readAsar('dsh/node_modules/@deepseek-ai/dsh-session-log-deepseek/lib/index.js');
+let src = asar.read('dsh/node_modules/@deepseek-ai/dsh-session-log-deepseek/lib/index.js');
 if (!src) {
   console.error('core package not found in asar');
   process.exit(2);
@@ -98,6 +72,12 @@ const { __internals } = await import(PLUGIN);
 const store = await import(STORE);
 
 let prepare = null;
+/**
+ * 实际走的是哪条链路：`service` = 0.2.2-rc.1 起的 Cordis Service，
+ * `apply` = 更早的 apply() 直连。核心再改名时，回落路径会在无人察觉的情况下换链路，
+ * 所以把它打进摘要——「测的是不是你以为在测的东西」得是事实，不是记忆。
+ */
+let branch = 'none';
 const byId = new Map();
 const ctx = {
   logger: { warn() {} },
@@ -128,9 +108,11 @@ const samples = [];
 for (const maxBytes of [2000, 8192, 1 << 20, 8 << 20]) {
   // 0.2.2-rc.1 起 apply() 只做 ctx.plugin(Service)；这里直接构造实例，效果相同。
   if (typeof core.SessionLogDeepSeekService === 'function') {
+    branch = 'service';
     prepare = null;
     new core.SessionLogDeepSeekService(ctx, { enabled: { get: () => true }, maxBytes });
   } else {
+    branch = 'apply';
     core.apply(ctx, { enabled: { get: () => true }, maxBytes });
   }
   if (!prepare) {
@@ -167,6 +149,8 @@ for (const maxBytes of [2000, 8192, 1 << 20, 8 << 20]) {
   }
 }
 
+console.log('core version        ' + (coreVersion ?? '(unknown)'));
+console.log('branch              ' + branch);
 console.log('sessions            ' + files.length);
 console.log('comparisons         ' + compared);
 console.log('core errors         ' + coreThrew);

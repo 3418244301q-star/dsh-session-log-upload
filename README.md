@@ -85,21 +85,36 @@
 ## 自检
 
 ```bash
-node tools/check-core-parity.mjs  # 与核心包逐字节对账（从 app.asar 提取真实现，52 会话 × 4 档）
+node tools/check-compat.mjs       # 兼容性守卫：engines 是否真匹配装机核心 + 客户端契约串是否还在
+node tools/check-core-parity.mjs  # 与核心包逐字节对账（从 app.asar 提取真实现，55 会话 × 4 档）
 node tools/check-envelope.mjs     # 分段/水位的回归护栏（与 tools/reference 比对，读真实日志）
 node tools/check-runtime.mjs      # Host 行为：mock fetch + mock ctx
 node tools/check-client.mjs       # 设置页控件：假 __ModuleLoader__
+node tools/check-version.mjs      # package.json / CHANGELOG / git 标签三处版本一致
+node tools/check-docs.mjs         # 上面六个全跑一遍，并与 CHANGELOG 的「验证工具一览」表比对
 ```
 
 - `tools/check-core-parity.mjs` 是**唯一能证明与核心等价**的检查：它把
   `@deepseek-ai/dsh-session-log-deepseek` 从 `app.asar` 里原样取出（只替换 import），
   跑出核心自己的 `prepare()`，再与本插件的 `segment()` 比对同一批会话、
-  同一水位、同一 `maxBytes` 的 JSON 输出。当前 208/208 一致，0 错误。
+  同一水位、同一 `maxBytes` 的 JSON 输出。当前 220/220 一致，0 错误。
+  摘要会打出 `core version` 与 `branch`：`service` 表示走 0.2.2-rc.1 起的
+  Cordis `Service` 分支，`apply` 表示更早的直连分支。**这两个值要跟你的核心版本对得上**，
+  否则说明它在测一条你以为不在用的链路。
   **升级 DSH 核心后必须先跑它**：它绑定安装路径与核心包名，stub 也可能失效，
   不跑就会安静地继续通过（或直接报 NOT FOUND）。安装位置不同用 `DSH_ASAR` 指定。
+- `tools/check-compat.mjs` 盯的是两类**不会报错的失效**：
+  1. `engines.dsh` 不匹配装机核心（预发布 semver 的 tuple 规则，漏了只是从市场筛选中消失）；
+  2. 客户端契约串消失。它用真的 semver 计算，找不到 semver 时 **exit 2 而不是跳过**——
+     自己写个近似实现正是这个 bug 的来源。`DSH_SEMVER` 可指定 semver 包目录。
+- **核对客户端契约时别只扫 shell bundle**：`settings.general.item`、`configForms` 在
+  运行时分发的客户端插件包（`dsh-client-ui-settings-general` 等）里，
+  `dsh-web-frontend` 的 shell bundle 里搜不到。只扫 shell 会得到假阴性。
+  `check-compat.mjs` 的输出现已按所属包聚合打印，直接对着看。
 - `tools/envelope.mjs` 那份参考实现只能挡重构回归，不能证明与核心一致。
 
 `tools/reference/` 是用于回归比对的独立参考实现，不参与运行。
+`tools/asar.mjs` 是三个脚本共用的 asar 读取器（按偏移直读，不依赖 `npx asar`）。
 
 ## 版本要求
 

@@ -6,7 +6,7 @@
 下方早期条目中的旧名与本地路径属于当时的记录，未回改。
 **规格来源**：`D:\dsh\3\SPEC-跨渠道会话日志上传.md`
 **首次实现**：2026-11-04
-**当前版本**：1.1.4
+**当前版本**：1.1.5
 
 ---
 
@@ -45,7 +45,8 @@
 | 1.1.1 | 11-05 12:40 | 复审修复：确认改成可失败的串联写、补 `disabled` 门禁、空语料不再判绿 |
 | 1.1.2 | 11-05 12:52 | 确认改成「每次启用都问」：只剩一次写，`acknowledged` 键删除；关闭失败不再静默 |
 | 1.1.3 | 11-05 19:55 | 启用前检测 API key：没有就不许启用，并在设置行常驻提醒 |
-| **1.1.4** | 11-06 18:55 | 适配 DSH 0.2.2-rc.1：补 `engines` 的 0.2.2 tuple、核心对账脚本适配 Service 重构 |
+| 1.1.4 | 11-06 18:55 | 适配 DSH 0.2.2-rc.1：补 `engines` 的 0.2.2 tuple、核心对账脚本适配 Service 重构 |
+| **1.1.5** | 11-06 19:10 | 三个观察项落地：对账打印 `branch`、`engines` 变成可断言、契约核对方法写进 README |
 
 ---
 
@@ -906,6 +907,43 @@ client **56/56**（确认只写一个键、再开一次还会问、关不弹、�
 
 ---
 
+## 1.1.5 — 三个观察项（F13/F14/F15）
+
+代码本体没动，动的是「下次复审能不能少踩坑」。
+
+### F13 对账脚本报出自己走哪条分支
+
+`check-core-parity.mjs` 优先用 `SessionLogDeepSeekService`，否则回落 `core.apply`。
+以前摘要只有 sessions/comparisons/errors/mismatches，看不出测的是哪条链路——核心再改名，
+回落会安静地换成另一条路，而数字照样全绿。现在多两行：
+
+```
+core version        0.2.2-rc.1
+branch              service
+```
+
+顺手复用新抽出的 `tools/asar.mjs`，脚本里那份 asar 解析删掉了（同一段逻辑原来抄了两份）。
+
+### F14 `engines.dsh` 从「人肉记得」变成「机器断言」
+
+新增 `tools/check-compat.mjs`：读装机核心版本（`dsh/node_modules/@deepseek-ai/dsh/package.json`），
+用**真的 semver** 对 `engines.dsh` 求一次 `satisfies`，不匹配就 exit 1 并直接给出该补的 tuple。
+不自己写近似实现——预发布 tuple 规则正是 1.1.4 那个 bug 的成因。
+找不到 semver 时 **exit 2**（`ENGINES-NOT-RUN`），不静默当绿。
+
+### F15 客户端契约的核对方法写进 README 并变成可复现
+
+同一个脚本把 8 个契约串扫一遍，输出**按所属包聚合**的命中：
+
+| 契约串 | 典型归属 |
+|---|---|
+| `settings.general.item`、`configForms` | 客户端插件包（`dsh-client-ui-settings-general` 等） |
+| `RiskConfirmation` | `dsh-client-ui-permission-presets` 等 + shell bundle |
+| `dsh_session_log`、`deepseekLlmApiExtensions` | `dsh-session-log-deepseek`、`dsh-deepseek-llm-api-extensions` |
+
+这一步就是为了防「只扫 shell bundle → 假阴性」重演。`check-docs.mjs` 已把新脚本纳入，
+CHANGELOG 的「验证工具一览」也加了 `check-compat.mjs` 这一行（`8/8`）。
+
 ## 1.1.4 — 适配 DSH 0.2.2-rc.1
 
 宿主从 `0.2.1-rc.5` 升到 `0.2.2-rc.1`，兼容性逐项核过：
@@ -1011,9 +1049,10 @@ parity 220/220、envelope 55 会话 0 差异、`check-docs` 通过。
 | `tools/check-core-parity.mjs` | 从 `app.asar` 取出核心包原样跑，与本插件逐字节对账 | **55 会话 × 4 档 = 220/220**，0 错误 |
 | `tools/check-runtime.mjs` | mock fetch + mock ctx 跑 Host 行为（结果码、并发、重试、卸载、状态端点） | **57/57** |
 | `tools/check-client.mjs` | 假 `__ModuleLoader__` 里跑设置页控件：结果提示、每次开启的确认、写失败、无 key 提醒 | **63/63** |
+| `tools/check-compat.mjs` | 拿装机核心核 `engines.dsh` 是否真匹配、客户端契约串是否还在（并报归属包） | **8/8** |
 | `tools/check-envelope.mjs` | 分段/水位的回归护栏（与 `tools/reference/` 比对，读真实日志） | 55 会话，0 差异；0 会话时 exit 2 |
 | `tools/check-version.mjs` | `package.json`、CHANGELOG 抬头与总表、git 标签三处是否同一版本 | **5/5** |
-| `tools/check-docs.mjs` | 跑上面五个套件，与上面这张表比对数字 | 文档数字与实测一致 |
+| `tools/check-docs.mjs` | 跑上面六个套件，与上面这张表比对数字 | 文档数字与实测一致 |
 
 > `node tools/check-docs.mjs` 会跑一遍套件（含版本守卫）并与本表比对。它盯的是**能被我改错的部分**：
 > runtime / client 的断言条数、parity 与 envelope 的内部一致性（会话数 × 档数 = 比对组数）以及
@@ -1023,6 +1062,7 @@ parity 220/220、envelope 55 会话 0 差异、`check-docs` 通过。
 复跑（在仓库根目录）：
 
 ```bash
+node tools/check-compat.mjs        # 需要 app.asar 与 semver；位置不同用 DSH_ASAR / DSH_SEMVER 指定
 node tools/check-core-parity.mjs   # 需要 app.asar；位置不同用 DSH_ASAR 指定
 node tools/check-runtime.mjs
 node tools/check-client.mjs
