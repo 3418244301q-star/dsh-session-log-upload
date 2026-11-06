@@ -200,7 +200,20 @@ node-semver 只有在范围里存在「major.minor.patch 完全相同、且自�
 
 ## 安装
 
-作为 Host 插件安装到某个 profile（需要 `dsh` 的插件管理能力或 `plugin_manager`），
+已发布到 npm（`dsh-session-log-upload`），三条安装路径任选：
+
+```bash
+# 1) npm（推荐：预构建，跳过 build 授权）
+dsh plugin install dsh-session-log-upload
+
+# 2) 直接从 GitHub 仓库装
+dsh plugin install git+https://github.com/3418244301q-star/dsh-session-log-upload.git
+
+# 3) 离线：下载 Release 里的 .tgz
+pnpm add ./dsh-session-log-upload-X.Y.Z.tgz
+```
+
+作为 Host 插件装到某个 profile（需要 `dsh` 的插件管理能力或 `plugin_manager`），
 bundle 清单在 `cordis.patch.yml`，默认 `enabled: false`。
 
 ## 版本与发布
@@ -224,6 +237,9 @@ bundle 清单在 `cordis.patch.yml`，默认 `enabled: false`。
    git tag -a vX.Y.Z -m "一句话说明"
    git push origin vX.Y.Z
    ```
+
+   （或者让 CI 代劳：`.github/workflows/publish.yml` 在 `v*` 标签上走 Trusted Publishing
+   发布到 npm 并附 provenance，不依赖任何本地凭证。）
 
 4. 在 GitHub 上为该 tag 建 Release，标题写明**本插件版本与验证过的 DSH 核心版本**：
 

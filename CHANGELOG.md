@@ -6,7 +6,7 @@
 下方早期条目中的旧名与本地路径属于当时的记录，未回改。
 **规格来源**：`D:\dsh\3\SPEC-跨渠道会话日志上传.md`
 **首次实现**：2026-11-04
-**当前版本**：1.1.5
+**当前版本**：1.1.6
 
 ---
 
@@ -46,7 +46,8 @@
 | 1.1.2 | 11-05 12:52 | 确认改成「每次启用都问」：只剩一次写，`acknowledged` 键删除；关闭失败不再静默 |
 | 1.1.3 | 11-05 19:55 | 启用前检测 API key：没有就不许启用，并在设置行常驻提醒 |
 | 1.1.4 | 11-06 19:10 | 适配 DSH 0.2.2-rc.1（补 `engines` 的 0.2.2 tuple、对账适配 Service 重构）+ 三条观察项落地（打印 `branch`、`engines` 可断言、契约核对方法写进 README） |
-| **1.1.5** | 11-06 20:05 | 收录准备：位图图标（180/512 PNG）、`schemastery` 改为 `peerDependencies` |
+| 1.1.5 | 11-06 20:05 | 收录准备：位图图标（180/512 PNG）、`schemastery` 改为 `peerDependencies` |
+| **1.1.6** | 11-06 20:50 | 发布上 npm + CI 自动发版（Trusted Publishing / provenance） |
 
 ---
 
@@ -906,6 +907,33 @@ client **56/56**（确认只写一个键、再开一次还会问、关不弹、�
 `check-docs` 通过。
 
 ---
+
+## 1.1.6 — 发布到 npm 与 CI 发版
+
+代码逻辑没动。这版把「发出去」这条路修成可持续的。
+
+### 首发 npm：几个意料之外
+
+- **本机 registry 是 npmmirror**（`~/.npmrc` 里写死），发布必须显式 `--registry=https://registry.npmjs.org`，
+  否则会被静默指去只读镜像。
+- **`npm publish` 在无 TTY 下不会提示 OTP**，直接 403。开了 2FA 之后才会走
+  「打开浏览器授权 → CLI 轮询 `/‑/v1/done`」这条 web-auth 路径。
+- **首次发布会先出现一个 `0.0.0-stage` 占位版本**（描述 `Temporary package placeholder for
+  staged publishing`），PUT 返回 **202 Accepted**、提示「may take a few minutes」。这不是失败，
+  等 `dist-tags.latest` 从 `0.0.0-stage` 翻到真实版本即可（实测约 40 秒）。
+
+### CI 自动发版
+
+新增 `.github/workflows/publish.yml`：`v*` 标签触达时，用 **Trusted Publishing（OIDC）**
+发布 —— 不存任何 secret，npm 侧核验「仓库 + 工作流 + 提交」并生成 **provenance 签名**。
+工作流先跑 `check-version` 与 `check-package`，版本或包内容不对就不发。
+
+需要一次性在 npm 包设置里登记 Trusted Publisher（org/repo/workflow 名必须完全一致）。
+
+### 文档
+
+- README「安装」给出三条路径（npm / git / 离线 tgz），npm 是推荐路径：预构建，免 build 授权。
+- README「版本与发布」注明 CI 可以在 tag 上代劳发布。
 
 ## 1.1.5 — 收录准备
 

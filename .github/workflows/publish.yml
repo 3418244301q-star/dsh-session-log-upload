@@ -1,0 +1,55 @@
+name: publish
+
+# 打 v* 标签即发布到 npm。
+#
+# 认证走 **Trusted Publishing（OIDC）**：不存任何 token，npm 用工作流签发的
+# 短期身份核验「确实是这个仓库的这个工作流」、以及它跑在哪个提交上，并生成
+# provenance 签名（npm 页面上会显示「由该仓库的该提交构建」）。
+#
+# 前置（一次性，在 npmjs.com 上做）：
+#   Package → Settings → Trusted Publisher → GitHub Actions
+#     Organization or user: 3418244301q-star
+#     Repository:           dsh-session-log-upload
+#     Workflow filename:    publish.yml
+#     Environment:          （留空）
+#
+# 本地发布（npm publish）仍可用，两者互不影响。
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write # provenance / Trusted Publishing 必需
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # Trusted Publishing 需要较新的 npm。
+      - run: npm install -g npm@11
+
+      # 依赖只在校验脚本里用得到（schemastery 是 peer）；装一次即可。
+      - run: npm ci --omit=optional || npm install --no-audit --no-fund
+
+      # 版本三处一致（package.json / CHANGELOG / 本次 tag）。
+      - name: 版本守卫
+        run: node tools/check-version.mjs
+
+      # 包里该带的都带了（尤其是 assets/ 下的位图），内部文件没混进来。
+      - name: 打包守卫
+        run: node tools/check-package.mjs
+
+      - name: 发布
+        run: npm publish --provenance --access public
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
