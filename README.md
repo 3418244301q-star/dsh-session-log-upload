@@ -121,7 +121,7 @@ node tools/check-docs.mjs         # 上面六个全跑一遍，并与 CHANGELOG 
 | 依赖 | 声明 | 说明 |
 |---|---|---|
 | DSH 本体 | `dsh.engines.dsh: ">=0.2.1-rc.3 <0.2.2-0 \|\| >=0.2.2-rc.1"` | 市场据此做兼容筛选；本机实测 0.2.2-rc.1（逐字节对账 220/220 仍全等） |
-| `@deepseek-ai/schemastery` | `^3.18.4` | 用到 `.volatile()`，该 API 3.18.2 才有；旧版会报 `...volatile is not a function` |
+| `@deepseek-ai/schemastery` | `peerDependencies: ^3.18.4` | 官方包按惯例声明为 peer（避免消费者装出第二份）；用到 `.volatile()`，该 API 3.18.2 才有，旧版会报 `...volatile is not a function`。仓库里同时列进 `devDependencies`，本地跑测试才有得解析 |
 | 客户端注入 | `dsh-client-locale`、`dsh-client-ui-settings` | 宿主缺少时设置行不出现，**且不报错** |
 
 #### 预发布版本的 semver 盲区（每次 DSH 进新预发布都要看一眼）
