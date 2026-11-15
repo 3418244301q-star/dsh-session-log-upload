@@ -6,7 +6,7 @@
 下方早期条目中的旧名与本地路径属于当时的记录，未回改。
 **规格来源**：`D:\dsh\3\SPEC-跨渠道会话日志上传.md`
 **首次实现**：2026-11-04
-**当前版本**：1.1.7
+**当前版本**：1.1.8
 
 ---
 
@@ -49,6 +49,7 @@
 | 1.1.5 | 11-06 20:05 | 收录准备：位图图标（180/512 PNG）、`schemastery` 改为 `peerDependencies` |
 | 1.1.6 | 11-06 20:50 | 发布上 npm + CI 自动发版（Trusted Publishing / provenance） |
 | **1.1.7** | 11-06 21:10 | CI 顺手建 Release：正文从 CHANGELOG 抽、标题里的核心版本可核 |
+| 1.1.8 | 11-15 | 适配 DSH 0.2.2-rc.3（内核依赖面零变化）；tag 标注固定带核心版本；删掉 README 里写死对账数字 |
 
 ---
 
@@ -909,6 +910,46 @@ client **56/56**（确认只写一个键、再开一次还会问、关不弹、�
 
 ---
 
+## 1.1.8 — 适配 DSH 0.2.2-rc.3
+
+宿主从 `0.2.2-rc.1` 升到 `0.2.2-rc.3`。**运行代码一行没改**，要跟的只有元数据和两处文档。
+
+### 内核依赖面：四条逐条核过，全未变
+
+| 依赖面 | rc.1 | rc.3 |
+|---|---|---|
+| 内置上传器形态 | `class SessionLogDeepSeekService extends Service` | 相同 |
+| `registerExclusion` | 传入谓词 | 相同，`SessionLogUploadExclusion = (request) => boolean` |
+| 水位事件 `session-log-deepseek/delivery-accepted` | 有，`sessionFormatVersion` / `throughSeq` | 相同 |
+| schemastery | `~3.19.0` | `~3.19.0`（本插件 peer `^3.18.4` 仍落在范围内） |
+
+插件本身不碰核心的 Service：它只用 `ctx.sessions`、`ctx.on('session/event')`、
+`ctx.credentials`、`ctx.webServer`，所以这轮核心重构不在它的依赖路径上。
+
+对账证据不是「跑通了」而是「等价」：`check-core-parity` 从 `app.asar` 取出 rc.3 的
+`dsh-session-log-deepseek`，跑它自己的 `prepare()`，与本插件比同一批会话的同一批输出——
+45 个会话 × 4 档 = 180 组，0 错误 0 差异。
+
+### 删掉写死的对账数字
+
+README 原文写「55 会话 × 4 档 = 220/220」。本机会话从 55 掉到 45（日志保留策略），
+数字就对不上了。而 `check-docs` 只校验「会话数 × 档数 = 比对组数」这条**内部一致性**，
+所以它照样报「文档数字与实测一致」——写死的数字腐化了也拦不住。
+
+改为不写死：**`mismatches` 必须为 0，`comparisons` 随本机会话数变化**。
+
+### 本版起，tag 的标注里带核心版本
+
+之前 tag 标注只有「这版做了什么 + 验证数字」，验证的是哪个核心得去翻 Release 标题。
+本版起标注固定带 `核心 DSH <version>`：
+
+```
+git tag -a v1.1.8 -m "1.1.8：适配 DSH 0.2.2-rc.3…。核心 DSH 0.2.2-rc.3。验证：…"
+```
+
+同一个 tuple 内的升级（rc.1 → rc.3）不用动 `engines`：`>=0.2.2-rc.1` 已经覆盖到
+`0.2.2-rc.N`。进 `0.2.3-rc.x` 时仍要补分支——这个上限不是一劳永逸的。
+
 ## 1.1.7 — CI 顺手建 Release
 
 发版从「打 tag + 手工建 Release」两段，收成一段：**打 tag 是唯一的发布动作**。
@@ -1166,12 +1207,12 @@ parity 220/220、envelope 55 会话 0 差异、`check-docs` 通过。
 
 | 脚本 | 作用 | 现在的状态 |
 |---|---|---|
-| `tools/check-core-parity.mjs` | 从 `app.asar` 取出核心包原样跑，与本插件逐字节对账 | **55 会话 × 4 档 = 220/220**，0 错误 |
+| `tools/check-core-parity.mjs` | 从 `app.asar` 取出核心包原样跑，与本插件逐字节对账 | 本机会话数 × 4 档，**`mismatches` 必须为 0**（不写死会话数） |
 | `tools/check-runtime.mjs` | mock fetch + mock ctx 跑 Host 行为（结果码、并发、重试、卸载、状态端点） | **57/57** |
 | `tools/check-client.mjs` | 假 `__ModuleLoader__` 里跑设置页控件：结果提示、每次开启的确认、写失败、无 key 提醒 | **63/63** |
 | `tools/check-package.mjs` | 跑 `npm pack --dry-run`，核 `files` 有没有漏掉对外产物（位图）、有没有混入内部文件 | **12/12** |
 | `tools/check-compat.mjs` | 拿装机核心核 `engines.dsh`、声明的 `verifiedCoreVersion`、客户端契约串（并报归属包） | **10/10** |
-| `tools/check-envelope.mjs` | 分段/水位的回归护栏（与 `tools/reference/` 比对，读真实日志） | 55 会话，0 差异；0 会话时 exit 2 |
+| `tools/check-envelope.mjs` | 分段/水位的回归护栏（与 `tools/reference/` 比对，读真实日志） | 0 差异；0 会话时 exit 2 |
 | `tools/check-version.mjs` | `package.json`、CHANGELOG 抬头与总表、git 标签三处是否同一版本 | **5/5** |
 | `tools/check-docs.mjs` | 跑上面七个套件，与上面这张表比对数字 | 文档数字与实测一致 |
 

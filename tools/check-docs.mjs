@@ -28,15 +28,22 @@ const SUITES = [
       return { sessions, comparisons, mismatches };
     },
     expect: (row, actual) => {
-      const m = row.match(/(\d+)\s*会话\s*×\s*(\d+)\s*档\s*=\s*(\d+)\/(\d+)/);
-      if (!m) return ['cannot parse the parity row'];
       const problems = [];
-      // 会话数随本机日志变化，不做硬比对；只校验表内自洽与"差异必须为 0"。
-      if (Number(m[1]) * Number(m[2]) !== Number(m[3])) {
-        problems.push(`row is not self-consistent: ${m[1]} x ${m[2]} != ${m[3]}`);
+      // 与文档无关的硬事实：4 档 × 会话数 = 比对组数，差异必须是 0。
+      // 这条比"表里写的数对不对"更强——它连 runner 自己跑漏档都拦得住。
+      if (actual.comparisons !== actual.sessions * 4) {
+        problems.push(`runner is not self-consistent: ${actual.sessions} x 4 != ${actual.comparisons}`);
       }
-      if (Number(m[3]) !== Number(m[4])) problems.push(`passed/total mismatch in row: ${m[3]}/${m[4]}`);
       if (actual.mismatches !== 0) problems.push(`mismatches ${actual.mismatches} != 0`);
+      // 文档里若仍写死了具体数字，就顺带校验它自洽；没写数字不算错——
+      // 会话数随本机日志变化（55 → 45 就让这句谎话骗过了一轮守卫），不该写死。
+      const m = row.match(/(\d+)\s*会话\s*×\s*(\d+)\s*档\s*=\s*(\d+)\/(\d+)/);
+      if (m) {
+        if (Number(m[1]) * Number(m[2]) !== Number(m[3])) {
+          problems.push(`row is not self-consistent: ${m[1]} x ${m[2]} != ${m[3]}`);
+        }
+        if (Number(m[3]) !== Number(m[4])) problems.push(`passed/total mismatch in row: ${m[3]}/${m[4]}`);
+      }
       return problems;
     },
   },
@@ -99,7 +106,7 @@ const SUITES = [
       return { sessions, mismatches };
     },
     expect: (row, actual) => {
-      if (!/(\d+) 会话/.test(row)) return ['cannot parse the envelope row'];
+      // 会话数不写死；只要求"差异为 0"。
       return actual.mismatches !== 0 ? [`envelope mismatches ${actual.mismatches} != 0`] : [];
     },
   },
