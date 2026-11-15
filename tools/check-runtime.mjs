@@ -131,6 +131,7 @@ async function boot(config, sessions, options = {}) {
       get: (id) => sessions.map((item) => item.session).find((item) => String(item.id) === String(id)),
     },
     get(name) {
+      if (name === 'connection') return options.connection;
       if (name !== 'webServer') return undefined;
       return { register: (route) => { routes.push(route); return () => {}; } };
     },
@@ -309,6 +310,58 @@ const post = (route, options = {}) => {
     const res = fakeRes();
     await routes[0].handler({ method: 'POST', headers: { host: '127.0.0.1:3080', origin: 'http://evil.example', 'x-dsh-sync': '1' } }, res);
     check('cross-origin request is rejected', res.statusCode === 403, String(res.statusCode));
+  }
+}
+
+/* 7c) DSH 自身的准入围栏：交给 Connection 服务，而不是自己再抄一份判定 */
+{
+  // 围栏拒绝 → 原样使用它给的状态码，且一个请求都不发
+  {
+    const { session } = makeSession({ id: 'session-fence-deny' });
+    const seen = [];
+    const connection = { requestRejection: (req) => { seen.push(req.headers.origin); return 403; } };
+    const { routes, requests } = await boot({ ...base, mode: 'manual' }, [{ session }], { connection });
+    const res = await post(routes[0]);
+    check('connection fence rejection is honoured', res.status === 403 && res.json.code === 'admission', JSON.stringify(res.json));
+    check('a fenced request uploads nothing', requests.length === 0, `requests=${requests.length}`);
+    check('the fence is asked about this request', seen.length === 1, `calls=${seen.length}`);
+  }
+
+  // 围栏放行 → 行为与之前完全一致
+  {
+    const { session } = makeSession({ id: 'session-fence-allow' });
+    const connection = { requestRejection: () => undefined };
+    const { routes, requests } = await boot({ ...base, mode: 'manual' }, [{ session }], { connection });
+    const res = await post(routes[0]);
+    check('an admitted request still uploads', res.json.code === 'uploaded' && requests.length === 1, JSON.stringify(res.json));
+  }
+
+  // 围栏自己抛错 → 失败关闭（500），不能当成放行
+  {
+    const { session } = makeSession({ id: 'session-fence-throw' });
+    const connection = { requestRejection: () => { throw new Error('boom'); } };
+    const { routes, requests } = await boot({ ...base, mode: 'manual' }, [{ session }], { connection });
+    const res = await post(routes[0]);
+    check('a throwing fence fails closed', res.status === 500 && res.json.code === 'admission', JSON.stringify(res.json));
+    check('a throwing fence uploads nothing', requests.length === 0, `requests=${requests.length}`);
+  }
+
+  // 老核心没有 connection 服务 → 退回自己的 guard，功能不受影响
+  {
+    const { session } = makeSession({ id: 'session-fence-absent' });
+    const { routes } = await boot({ ...base, mode: 'manual' }, [{ session }], { connection: undefined });
+    const res = await post(routes[0]);
+    check('a core without the connection service still works', res.json.code === 'uploaded', JSON.stringify(res.json));
+  }
+
+  // 状态端点同样过围栏（它也会泄露「有没有 key」）
+  {
+    const { session } = makeSession({ id: 'session-fence-status' });
+    const connection = { requestRejection: () => 401 };
+    const { routes } = await boot({ ...base, mode: 'manual' }, [{ session }], { connection });
+    const route = routes.find((r) => r.path === '/__dsh-session-log-upload/status');
+    const res = await post(route, { method: 'GET' });
+    check('the status route is fenced too', res.status === 401 && res.json.code === 'admission', JSON.stringify(res.json));
   }
 }
 

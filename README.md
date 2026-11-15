@@ -196,8 +196,12 @@ node-semver 只有在范围里存在「major.minor.patch 完全相同、且自�
   这是这一档唯一的入口。
 - `turn/end` 的 `forked` 收尾不触发上传：那是 fork 子会话加载继承段时的合成收尾；
   极端情况下若它正好是最后一条，要等启动扫描或手动点击。
-- 「立即上传」端点 `POST /__dsh-session-log-upload/upload` 是宿主本地 HTTP 路由，
-  只校验同源；同机其它页面猜到路径最多能重复触发一次上传（水位与冷却挡住实际重发）。
+- 两条路由（`POST …/upload`、`GET …/status`）都先过 **DSH 自己的准入围栏**
+  `ctx.connection.requestRejection(req)`——Host/Origin 判定挡 DNS rebinding 与跨站调用，
+  浏览器登录态再挡一层；过不了就原样返回它给的状态码（`code: "admission"`）。
+  之后才是本插件自己的 `guard()`（自定义头 + Origin/Host 比对）。
+  老核心没有 `connection` 服务时退回只跑 `guard()`；围栏自己抛错则**失败关闭**（500），不当放行。
+  仍未防守的：同机进程直接伪造头——这里防的是网页，不是本机进程。
 
 ## 安装
 

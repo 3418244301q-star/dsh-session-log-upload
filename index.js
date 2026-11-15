@@ -909,6 +909,39 @@ export function apply(ctx, config) {
     }
   };
 
+  /*
+   * DSH 自身的准入围栏：Host/Origin 判定（挡 DNS rebinding 与跨站调用）+ 浏览器登录态。
+   * 不自己再抄一份判定，直接问 Connection 服务——两处实现分叉就会出现「一边以为挡住了」。
+   * 老核心没有这个服务时返回 undefined，退回本插件自己的 guard()，行为与旧版一致；
+   * 但 requestRejection 自己抛错时不吞掉：宁可让这次请求 500，也不当成放行。
+   */
+  const connectionAdmission = (req) => {
+    let connection;
+    try {
+      connection = ctx.get?.('connection') ?? Reflect.get(ctx, 'connection');
+    } catch {
+      connection = undefined;
+    }
+    const reject = connection?.requestRejection;
+    if (typeof reject !== 'function') return undefined;
+    return reject.call(connection, req);
+  };
+
+  /** 过不了 DSH 的围栏就当拒绝；返回 null 表示放行。 */
+  const admissionDenied = (req, res, send) => {
+    let rejection;
+    try {
+      rejection = connectionAdmission(req);
+    } catch (error) {
+      log('warn', `connection admission check failed: ${error?.message ?? error}`);
+      send(500, { ok: false, code: 'admission' });
+      return true;
+    }
+    if (rejection === undefined) return false;
+    send(rejection, { ok: false, code: 'admission' });
+    return true;
+  };
+
   const webServer = ctx.get?.('webServer');
   if (webServer?.register) {
     const unregister = webServer.register({
@@ -928,6 +961,7 @@ export function apply(ctx, config) {
         if (req.method === 'OPTIONS') {
           return send(204, {});
         }
+        if (admissionDenied(req, res, send)) return undefined;
         if (req.method !== 'POST') return send(405, { ok: false, code: 'method' });
         const denied = guard(req);
         if (denied !== null) return send(403, { ok: false, code: denied });
@@ -966,6 +1000,7 @@ export function apply(ctx, config) {
           }
         };
         if (req.method === 'OPTIONS') return send(204, {});
+        if (admissionDenied(req, res, send)) return undefined;
         if (req.method !== 'GET') return send(405, { ok: false, code: 'method' });
         const denied = guard(req);
         if (denied !== null) return send(403, { ok: false, code: denied });

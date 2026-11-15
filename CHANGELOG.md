@@ -6,7 +6,7 @@
 下方早期条目中的旧名与本地路径属于当时的记录，未回改。
 **规格来源**：`D:\dsh\3\SPEC-跨渠道会话日志上传.md`
 **首次实现**：2026-11-04
-**当前版本**：1.1.8
+**当前版本**：1.1.9
 
 ---
 
@@ -50,6 +50,7 @@
 | 1.1.6 | 11-06 20:50 | 发布上 npm + CI 自动发版（Trusted Publishing / provenance） |
 | **1.1.7** | 11-06 21:10 | CI 顺手建 Release：正文从 CHANGELOG 抽、标题里的核心版本可核 |
 | 1.1.8 | 11-15 | 适配 DSH 0.2.2-rc.3（内核依赖面零变化）；tag 标注固定带核心版本；删掉 README 里写死对账数字 |
+| 1.1.9 | 11-16 | 两条 HTTP 路由改用 DSH 自己的准入围栏（`connection.requestRejection`），失败关闭 |
 
 ---
 
@@ -910,6 +911,39 @@ client **56/56**（确认只写一个键、再开一次还会问、关不弹、�
 
 ---
 
+## 1.1.9 — 路由改用 DSH 的准入围栏
+
+收录评审给的一句话值得单开一版：**「它的 HTTP 路由是用 `webServer.register` 挂的，
+DSH 对这类路由不做 Host / Origin 准入」**。事实如此——这个列表因此在描述里加了一句
+「HTTP 路由没有 DSH 的访问检查」。去掉那半句只有一个办法：真的补上检查。
+
+### 之前为什么不算没事
+
+`guard()` 要求自定义头 `x-dsh-sync: 1` 且 Origin/Host 同源。跨站脚本发不出自定义头，
+所以网页打不通——但这是**我自己写的一份近似判定**，不是 DSH 用的那一份。
+近似判定会漂：核心的围栏同时挡 DNS rebinding、校验浏览器登录态，而我的 `guard()`
+对这两件事一无所知。两处实现分叉，最坏的结果是「一边以为挡住了」。
+
+### 现在：问，不抄
+
+两条路由（`POST …/upload`、`GET …/status`）在方法检查之后、`guard()` 之前，先过：
+
+```js
+const rejection = ctx.get?.('connection')?.requestRejection?.(req);
+if (rejection !== undefined) { res.statusCode = rejection; ... }
+```
+
+- 状态码**原样使用**围栏给的值，不自己发明一个 403——它区分得比 403 细（未认证 401 之类）。
+- 老核心没有 `connection` 服务时返回 `undefined`，退回只跑 `guard()`，行为与 1.1.8 一致。
+- 围栏自己抛错时**失败关闭**：500 + `code: "admission"`，不当成放行。
+  一个安全检查出错时放行，比它从来没被装上都糟。
+
+### 测试
+
+新增 8 条断言（57 → 65），把四种分支都钉住：围栏拒绝→用它给的状态码且一个请求都不发、
+围栏放行→照常上传、围栏抛错→500 且不发、没有 `connection` 服务→照常工作；
+状态端点单独一条（它也会泄露「有没有配 key」）。
+
 ## 1.1.8 — 适配 DSH 0.2.2-rc.3
 
 宿主从 `0.2.2-rc.1` 升到 `0.2.2-rc.3`。**运行代码一行没改**，要跟的只有元数据和两处文档。
@@ -1208,7 +1242,7 @@ parity 220/220、envelope 55 会话 0 差异、`check-docs` 通过。
 | 脚本 | 作用 | 现在的状态 |
 |---|---|---|
 | `tools/check-core-parity.mjs` | 从 `app.asar` 取出核心包原样跑，与本插件逐字节对账 | 本机会话数 × 4 档，**`mismatches` 必须为 0**（不写死会话数） |
-| `tools/check-runtime.mjs` | mock fetch + mock ctx 跑 Host 行为（结果码、并发、重试、卸载、状态端点） | **57/57** |
+| `tools/check-runtime.mjs` | mock fetch + mock ctx 跑 Host 行为（结果码、并发、重试、卸载、状态端点、准入围栏） | **65/65** |
 | `tools/check-client.mjs` | 假 `__ModuleLoader__` 里跑设置页控件：结果提示、每次开启的确认、写失败、无 key 提醒 | **63/63** |
 | `tools/check-package.mjs` | 跑 `npm pack --dry-run`，核 `files` 有没有漏掉对外产物（位图）、有没有混入内部文件 | **12/12** |
 | `tools/check-compat.mjs` | 拿装机核心核 `engines.dsh`、声明的 `verifiedCoreVersion`、客户端契约串（并报归属包） | **10/10** |
