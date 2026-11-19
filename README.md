@@ -124,7 +124,7 @@ node tools/check-docs.mjs         # 上面六个全跑一遍，并与 CHANGELOG 
 
 | 依赖 | 声明 | 说明 |
 |---|---|---|
-| DSH 本体 | `dsh.engines.dsh: ">=0.2.1-rc.3 <0.2.2-0 \|\| >=0.2.2-rc.1"` | 市场据此做兼容筛选；本机实测 0.2.2-rc.3（逐字节对账 mismatches 为 0） |
+| DSH 本体 | `dsh.engines.dsh: ">=0.2.1-rc.3 <0.2.2-0 \|\| >=0.2.2-rc.1"` | 市场据此做兼容筛选；本机实测 0.2.2-rc.5（逐字节对账 mismatches 为 0） |
 | `@deepseek-ai/schemastery` | `peerDependencies: ^3.18.4`（仓库里另列 `devDependencies`） | 官方包按惯例声明为 peer（避免消费者装出第二份）；用到 `.volatile()`，该 API 3.18.2 才有，旧版会报 `...volatile is not a function`。**代价**：`index.js` 顶部是静态 `import`，peer 不满足时插件不是降级，而是**整个不加载**（见下节） |
 | 客户端注入 | `dsh-client-locale`、`dsh-client-ui-settings` | 宿主缺少时设置行不出现，**且不报错** |
 
@@ -137,7 +137,7 @@ node-semver 只有在范围里存在「major.minor.patch 完全相同、且自�
 | 宿主版本 | 匹配 | 原因 |
 |---|---|---|
 | `0.2.1-rc.5` | ✅ | 范围里有 `0.2.1` tuple 上的预发布比较符 |
-| `0.2.2-rc.1` / `-rc.3` | ✅ | 第二个分支 `>=0.2.2-rc.1` 正好落在该 tuple 上，同 tuple 内不用再改 |
+| `0.2.2-rc.1` / `-rc.3` / `-rc.5` | ✅ | 第二个分支 `>=0.2.2-rc.1` 正好落在该 tuple 上，同 tuple 内不用再改 |
 | `0.2.2`（正式版） | ✅ | 正式版不受这条规则限制 |
 
 被排除的后果不是报错，而是**从市场的兼容筛选里静默消失**——本机日志、安装界面都不会提示。

@@ -6,7 +6,7 @@
 下方早期条目中的旧名与本地路径属于当时的记录，未回改。
 **规格来源**：`D:\dsh\3\SPEC-跨渠道会话日志上传.md`
 **首次实现**：2026-11-04
-**当前版本**：1.1.9
+**当前版本**：1.2.0
 
 ---
 
@@ -51,6 +51,7 @@
 | **1.1.7** | 11-06 21:10 | CI 顺手建 Release：正文从 CHANGELOG 抽、标题里的核心版本可核 |
 | 1.1.8 | 11-15 | 适配 DSH 0.2.2-rc.3（内核依赖面零变化）；tag 标注固定带核心版本；删掉 README 里写死对账数字 |
 | 1.1.9 | 11-16 | 两条 HTTP 路由改用 DSH 自己的准入围栏（`connection.requestRejection`），失败关闭 |
+| 1.2.0 | 11-19 | 适配 DSH 0.2.2-rc.5（依赖面逐条核过，仍零改动）；版本号按用户要求跨到小版本 |
 
 ---
 
@@ -910,6 +911,37 @@ client **56/56**（确认只写一个键、再开一次还会问、关不弹、�
 `check-docs` 通过。
 
 ---
+
+## 1.2.0 — 适配 DSH 0.2.2-rc.5
+
+宿主从 `0.2.2-rc.3` 升到 `0.2.2-rc.5`。**运行代码仍然一行没改**，要跟的只有元数据与文档。
+版本号跨到 `1.2.0` 是用户的决定，不是行为变化——这一点写在这里，免得以后有人
+从版本号反推出「1.2 有新功能」。
+
+### 依赖面：六条逐条核过
+
+| 依赖面 | rc.5 |
+|---|---|
+| `SessionLogDeepSeekService extends Service` | 在 |
+| `registerExclusion` + 谓词签名 `(request) => boolean` | 在，未变 |
+| `session-log-deepseek/delivery-accepted` / `throughSeq` | 在 |
+| schemastery | `~3.19.0`，仍落在插件 peer `^3.18.4` 内 |
+| `connection` 服务 + `requestRejection(request)` | 在，类名仍是 `HostConnectionService` |
+| `engines.dsh` | `>=0.2.2-rc.1` 覆盖 rc.5，不用动 |
+
+第 5 条是这轮最该盯的：1.1.9 的准入围栏依赖它，一旦它改名或消失，插件会**静默退回**
+自己那份近似判定——功能还在，安全性悄悄掉一档。所以除了跑套件，还直接问了运行中的宿主：
+
+```
+GET /__dsh-session-log-upload/status  →  {"ok":false,"code":"admission"}
+```
+
+返回 `admission`（而不是 1.1.9 之前的 `header`）说明围栏真的在生产路径上跑着。
+
+### 对账
+
+`check-core-parity` 在 rc.5 的真实包上跑：48 会话 × 4 档 = 192 组，0 错误 0 差异。
+会话数比上一版多 3（本地日志增长），数字会变，`mismatches` 必须为 0。
 
 ## 1.1.9 — 路由改用 DSH 的准入围栏
 
